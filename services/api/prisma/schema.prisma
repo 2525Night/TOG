@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Local MVP uses SQLite for zero-friction setup.
+// Production (IL): switch provider to postgresql + DATABASE_URL.
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountKind {
+  CASH
+  BANK
+  CREDIT_CARD
+  LOAN
+  INVESTMENT
+  OTHER
+}
+
+enum TxDirection {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum SourceType {
+  USER_INPUT
+  CHAT
+  FILE_UPLOAD
+  DOCUMENT_EXTRACTION
+  CALCULATION
+  AI_INFERENCE
+  MARKET_DATA
+  BANK_API
+  CREDIT_CARD_API
+  INSURANCE_API
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  passwordHash         String
+  displayName          String?
+  role                 Role     @default(USER)
+  jurisdiction         String   @default("IL")
+  currency             String   @default("ILS")
+  onboardingCompleted  Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  accounts     FinancialAccount[]
+  transactions Transaction[]
+  goals        Goal[]
+  auditEvents  AuditEvent[]
+  alerts       Alert[]
+  documents    Document[]
+  budgetCommitments BudgetCommitment[]
+  budgetSettings    UserBudgetSettings?
+  userCategories    UserCategory[]
+}
+
+model FinancialAccount {
+  id             String      @id @default(cuid())
+  userId         String
+  name           String
+  kind           AccountKind @default(CASH)
+  currency       String      @default("ILS")
+  currentBalance Decimal     @default(0)
+  isActive       Boolean     @default(true)
+  sourceType     SourceType  @default(USER_INPUT)
+  sourceProvider String?
+  userConfirmed  Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id              String       @id @default(cuid())
+  userId          String
+  accountId       String?
+  direction       TxDirection
+  amount          Decimal
+  currency        String       @default("ILS")
+  categoryKey     String
+  description     String?
+  note            String?
+  merchantNorm    String?
+  bookedAt        DateTime
+  sourceType      SourceType   @default(USER_INPUT)
+  sourceProvider  String?
+  sourceReference String?
+  confidence      Float?
+  userConfirmed   Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, bookedAt])
+  @@index([userId, categoryKey])
+  @@index([userId, merchantNorm])
+  @@index([userId, sourceReference])
+}
+
+model Goal {
+  id            String     @id @default(cuid())
+  userId        String
+  title         String
+  targetAmount  Decimal
+  currentAmount Decimal    @default(0)
+  currency      String     @default("ILS")
+  targetDate    DateTime?
+  sourceType    SourceType @default(USER_INPUT)
+  userConfirmed Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  meta      String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  titleHe   String
+  bodyHe    String
+  severity  String   @default("medium")
+  dismissed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dismissed])
+  @@index([userId, type])
+}
+
+enum DocStorageMode {
+  TEMPORARY
+  PERMANENT
+}
+
+enum DocStatus {
+  UPLOADED
+  EXTRACTED
+  CONFIRMED
+  REJECTED
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  userId        String
+  originalName  String
+  mimeType      String
+  sourceKind    String         @default("csv")
+  storageMode   DocStorageMode @default(TEMPORARY)
+  status        DocStatus      @default(UPLOADED)
+  filePath      String?
+  rawText       String?
+  draftJson     String?
+  importedCount Int?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+enum CommitmentNature {
+  FIXED
+  PERIODIC
+}
+
+enum CommitmentCadence {
+  MONTHLY
+  YEARLY
+}
+
+model BudgetCommitment {
+  id             String            @id @default(cuid())
+  userId         String
+  titleHe        String
+  categoryKey    String
+  merchantNorm   String?
+  nature         CommitmentNature  @default(FIXED)
+  expectedAmount Decimal
+  cadence        CommitmentCadence @default(MONTHLY)
+  anchorDay      Int?
+  /** YYYY-MM — first month covered by a goal standing order. */
+  startMonth     String?
+  /** YYYY-MM — last month inclusive; null when open-ended / untilGoal. */
+  endMonth       String?
+  /** When true, standing runs until the linked goal is funded (endMonth ignored). */
+  untilGoal      Boolean           @default(false)
+  active         Boolean           @default(true)
+  sourceType     SourceType        @default(USER_INPUT)
+  userConfirmed  Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@index([userId, categoryKey])
+}
+
+model UserBudgetSettings {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  flexibleCap Decimal?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/** User-defined categories (key prefixed with custom:). */
+model UserCategory {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  labelHe   String
+  /** fixed | variable | periodic */
+  nature    String   @default("variable")
+  /** EXPENSE | INCOME */
+  direction String   @default("EXPENSE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, direction])
+}
+

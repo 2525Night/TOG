@@ -1,0 +1,80 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards";
+import { CurrentUser, AuthUser } from "../auth/current-user.decorator";
+import { BudgetService } from "./budget.service";
+
+@Controller("budget")
+@UseGuards(JwtAuthGuard)
+export class BudgetController {
+  constructor(private readonly budget: BudgetService) {}
+
+  @Get("snapshot")
+  snapshot(
+    @CurrentUser() user: AuthUser,
+    @Query("month") month?: string,
+  ) {
+    return this.budget.snapshot(user.userId, month);
+  }
+
+  @Get("commitments")
+  list(@CurrentUser() user: AuthUser) {
+    return this.budget.listCommitments(user.userId);
+  }
+
+  @Post("commitments")
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body()
+    body: {
+      titleHe: string;
+      categoryKey: string;
+      expectedAmount: number;
+      merchantNorm?: string;
+      nature?: "FIXED" | "PERIODIC";
+      cadence?: "MONTHLY" | "YEARLY";
+      anchorDay?: number;
+    },
+  ) {
+    return this.budget.createCommitment(user.userId, body);
+  }
+
+  @Get("suggestions")
+  suggestions(@CurrentUser() user: AuthUser) {
+    return this.budget.suggestions(user.userId);
+  }
+
+  @Post("commitments/from-suggestion")
+  fromSuggestion(
+    @CurrentUser() user: AuthUser,
+    @Body()
+    body: {
+      titleHe: string;
+      categoryKey: string;
+      merchantNorm: string;
+      expectedAmount: number;
+    },
+  ) {
+    return this.budget.confirmSuggestion(user.userId, body);
+  }
+
+  @Post("settings/flexible-cap")
+  setCap(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { flexibleCap: number | null },
+  ) {
+    return this.budget.setFlexibleCap(user.userId, body.flexibleCap ?? null);
+  }
+
+  @Post("commitments/:id/deactivate")
+  deactivate(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.budget.deactivateCommitment(user.userId, id);
+  }
+}

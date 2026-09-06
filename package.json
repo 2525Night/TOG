@@ -1,0 +1,21 @@
+{
+  "name": "moneytail",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @moneytail/api",
+    "dev:web": "npm run dev -w @moneytail/web",
+    "dev:admin": "npm run dev -w @moneytail/admin",
+    "build": "npm run build -w @moneytail/shared && npm run build -w @moneytail/api && npm run build -w @moneytail/web && npm run build -w @moneytail/admin",
+    "db:generate": "npm run prisma:generate -w @moneytail/api",
+    "db:migrate": "npm run prisma:migrate -w @moneytail/api",
+    "db:push": "npm run prisma:push -w @moneytail/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: moneytail-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moneytail
+      POSTGRES_PASSWORD: moneytail
+      POSTGRES_DB: moneytail
+    ports:
+      - "55432:5432"
+    volumes:
+      - moneytail_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneytail -d moneytail"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  moneytail_pg:
