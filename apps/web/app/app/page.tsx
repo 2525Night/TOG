@@ -10,7 +10,11 @@ import { PageHeader } from "@/components/PageHeader";
 type BudgetSnapshot = {
   month: string;
   incomeActual: number;
-  fixed: { expectedTotal: number; actualTotal: number };
+  fixed: {
+    expectedTotal: number;
+    actualTotal: number;
+    basisForLeftover?: "expected" | "actual";
+  };
   flexible: {
     actualTotal: number;
     cap: number | null;
@@ -39,7 +43,23 @@ type Summary = {
   availableBalance: number;
   incomeMtd: number;
   expenseMtd: number;
+  allocatedToGoalsMtd?: number;
   netMtd: number;
+  formulaVersion?: string;
+  monthFacts?: {
+    checkingBalanceNow: number;
+    flows: {
+      income: number;
+      expense: number;
+      allocatedToGoals: number;
+      net: number;
+    };
+    budget: {
+      leftover: number;
+      fixed: BudgetSnapshot["fixed"];
+      flexible: BudgetSnapshot["flexible"];
+    };
+  };
   overdraftRisk: {
     level: string;
     messageHe: string;
@@ -229,8 +249,15 @@ function DashboardInner() {
         : "good";
 
   const b = data.budget;
-  const incomeForBar = b?.incomeActual ?? data.incomeMtd;
-  const expenseForBar = data.expenseMtd;
+  const facts = data.monthFacts;
+  const incomeForBar = facts?.flows.income ?? data.incomeMtd;
+  const expenseForBar = facts?.flows.expense ?? data.expenseMtd;
+  const toGoalsBar =
+    facts?.flows.allocatedToGoals ??
+    data.allocatedToGoalsMtd ??
+    b?.allocatedToGoals ??
+    0;
+  const leftoverBar = facts?.budget.leftover ?? b?.leftover;
 
   return (
     <div className="grid" style={{ gap: "0.85rem" }}>
@@ -248,6 +275,22 @@ function DashboardInner() {
         balance={data.availableBalance}
         income={incomeForBar}
         expense={expenseForBar}
+        extra={
+          leftoverBar != null ? (
+            <span>
+              נותר החודש{" "}
+              <strong className={leftoverBar >= 0 ? "tx-in" : "tx-out"}>
+                {formatIls(leftoverBar)}
+              </strong>
+              {toGoalsBar > 0 && (
+                <>
+                  {" · "}
+                  ליעדים {formatIls(toGoalsBar)}
+                </>
+              )}
+            </span>
+          ) : null
+        }
       />
 
       {(data.dataGaps || []).map((g) => (
@@ -294,12 +337,15 @@ function DashboardInner() {
             }
             flexible={b.flexible.actualTotal}
             toGoals={b.allocatedToGoals || 0}
-            leftover={Math.max(0, b.leftover)}
+            leftover={b.leftover}
           />
           <p className="muted" style={{ margin: "0.65rem 0 0", fontSize: "0.85rem" }}>
             {b.flexible.cap != null
               ? `תקרת גמיש ${formatIls(b.flexible.cap)} · נותר לתקרה ${formatIls(b.flexible.remainingToCap || 0)}`
               : "קבועים מחויבים · גמיש לפי בחירה · נותר ליעדים"}
+            {b.fixed.basisForLeftover === "expected"
+              ? " · קבועים לפי צפוי (עדיין לא שולמו)"
+              : ""}
             {" · "}
             <Link href={`/app/reports?month=${month}`}>פירוט במאזן ←</Link>
           </p>
@@ -309,6 +355,9 @@ function DashboardInner() {
       <div className="stat-strip">
         <span>
           נטו <strong>{formatIls(data.netMtd)}</strong>
+          <span className="muted" style={{ fontSize: "0.75rem", marginInlineStart: "0.35rem" }}>
+            אחרי הוצאות וליעדים
+          </span>
         </span>
         <span>
           שלמות <strong>{data.completeness}%</strong>

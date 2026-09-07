@@ -1,35 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { categoryNature } from "../budget/nature";
-
-const CATEGORY_HE: Record<string, string> = {
-  housing: "דיור",
-  food: "מזון",
-  transport: "תחבורה",
-  utilities: "חשבונות בית",
-  cellular: "סלולר",
-  internet: "אינטרנט",
-  subscriptions: "מנויים",
-  healthcare: "בריאות",
-  insurance: "ביטוח",
-  shopping: "קניות",
-  entertainment: "בילויים",
-  education: "חינוך",
-  children: "ילדים",
-  loans: "הלוואות",
-  banking: "עמלות בנק",
-  travel: "נסיעות",
-  goal_funding: "ליעדים",
-  other: "אחר",
-  salary: "משכורת",
-  freelance: "פרילנס",
-  benefits: "קצבאות / הטבות",
-  other_income: "הכנסה אחרת",
-};
-
-function categoryLabelHe(key: string): string {
-  return CATEGORY_HE[key] || key;
-}
+import { categoryLabelHe, categoryNature } from "../budget/nature";
+import { MonthFactsService } from "../month-facts/month-facts.service";
 
 export type RecPriority = "high" | "medium" | "low";
 
@@ -71,7 +43,10 @@ function startOfMonth(d: Date) {
 
 @Injectable()
 export class IntelligenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthFacts: MonthFactsService,
+  ) {}
 
   async buildReport(
     userId: string,
@@ -80,7 +55,6 @@ export class IntelligenceService {
   ) {
     const now = new Date();
     const period = await this.resolveFocusPeriod(userId, now);
-    // Honor the user's requested window (do not force monthsNeeded onto the chart).
     const months = Math.min(24, Math.max(2, monthsBack || 6));
 
     let focusStart = period.focusStart;
@@ -91,44 +65,56 @@ export class IntelligenceService {
       focusEnd = new Date(y, m, 1);
     }
 
-    const from = new Date(
-      focusStart.getFullYear(),
-      focusStart.getMonth() - (months - 1),
-      1,
-    );
-    const txs = await this.prisma.transaction.findMany({
-      where: { userId, bookedAt: { gte: from, lt: focusEnd } },
-      orderBy: { bookedAt: "asc" },
-    });
-
-    const seriesMap = new Map<
-      string,
-      { month: string; income: number; expense: number; net: number }
-    >();
-
+    const monthKeys: string[] = [];
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(
         focusStart.getFullYear(),
         focusStart.getMonth() - i,
         1,
       );
-      const key = monthKey(d);
-      seriesMap.set(key, { month: key, income: 0, expense: 0, net: 0 });
+      monthKeys.push(monthKey(d));
     }
-
-    for (const t of txs) {
-      const key = monthKey(new Date(t.bookedAt));
-      const row = seriesMap.get(key);
-      if (!row) continue;
-      const amount = Number(t.amount);
-      if (t.direction === "INCOME") row.income += amount;
-      if (t.direction === "EXPENSE") row.expense += amount;
-      row.net = row.income - row.expense;
-    }
-
-    const monthlySeries = [...seriesMap.values()];
 
     const focusKey = monthKey(focusStart);
+    const [factsList, txs, userCats] = await Promise.all([
+      this.monthFacts.series(userId, monthKeys),
+      this.prisma.transaction.findMany({
+        where: {
+          userId,
+          bookedAt: {
+            gte: new Date(
+              focusStart.getFullYear(),
+              focusStart.getMonth() - (months - 1),
+              1,
+            ),
+            lt: focusEnd,
+          },
+        },
+        orderBy: { bookedAt: "asc" },
+      }),
+      this.prisma.userCategory.findMany({ where: { userId } }),
+    ]);
+
+    const catExtras = {
+      natures: Object.fromEntries(
+        userCats.map((c) => [
+          c.key,
+          c.nature as "fixed" | "variable" | "periodic",
+        ]),
+      ),
+      labels: Object.fromEntries(userCats.map((c) => [c.key, c.labelHe])),
+    };
+
+    const monthlySeries = factsList.map((f) => ({
+      month: f.month,
+      income: f.flows.income,
+      expense: f.flows.expense,
+      allocatedToGoals: f.flows.allocatedToGoals,
+      net: f.flows.net,
+      netAfterGoals: f.flows.netAfterGoals,
+      leftover: f.budget.leftover,
+    }));
+
     const focusIdx = monthlySeries.findIndex((m) => m.month === focusKey);
     const current =
       focusIdx >= 0
@@ -137,7 +123,9 @@ export class IntelligenceService {
             month: focusKey,
             income: 0,
             expense: 0,
+            allocatedToGoals: 0,
             net: 0,
+            netAfterGoals: 0,
           };
     const previous =
       focusIdx > 0
@@ -145,7 +133,9 @@ export class IntelligenceService {
         : monthlySeries[monthlySeries.length - 2] || {
             income: 0,
             expense: 0,
+            allocatedToGoals: 0,
             net: 0,
+            netAfterGoals: 0,
           };
 
     const mom = {
@@ -159,12 +149,32 @@ export class IntelligenceService {
         previous: previous.expense,
         deltaPct: pctChange(previous.expense, current?.expense || 0),
       },
+      allocatedToGoals: {
+        current: current?.allocatedToGoals || 0,
+        previous: previous.allocatedToGoals || 0,
+        deltaPct: pctChange(
+          previous.allocatedToGoals || 0,
+          current?.allocatedToGoals || 0,
+        ),
+      },
       net: {
+        current: current?.netAfterGoals || 0,
+        previous: previous.netAfterGoals || 0,
+        deltaPct: pctChange(
+          previous.netAfterGoals || 0,
+          current?.netAfterGoals || 0,
+        ),
+      },
+      netOperating: {
         current: current?.net || 0,
-        previous: previous.net,
-        deltaPct: pctChange(previous.net, current?.net || 0),
+        previous: previous.net || 0,
+        deltaPct: pctChange(previous.net || 0, current?.net || 0),
       },
     };
+
+    const focusFacts =
+      factsList.find((f) => f.month === focusKey) ||
+      (await this.monthFacts.forMonth(userId, focusKey));
 
     const focusTx = txs.filter(
       (t) =>
@@ -177,6 +187,7 @@ export class IntelligenceService {
     for (const t of focusTx) {
       const amount = Number(t.amount);
       if (t.direction === "EXPENSE") {
+        if (t.categoryKey === "goal_funding") continue;
         expenseByCat[t.categoryKey] =
           (expenseByCat[t.categoryKey] || 0) + amount;
       } else if (t.direction === "INCOME") {
@@ -190,7 +201,7 @@ export class IntelligenceService {
       return Object.entries(map)
         .map(([key, amount]) => ({
           key,
-          labelHe: categoryLabelHe(key),
+          labelHe: categoryLabelHe(key, catExtras),
           amount,
           sharePct: total ? Math.round((amount / total) * 100) : 0,
         }))
@@ -208,16 +219,19 @@ export class IntelligenceService {
         direction: t.direction,
         amount: Number(t.amount),
         categoryKey: t.categoryKey,
-        categoryLabelHe: categoryLabelHe(t.categoryKey),
+        categoryLabelHe: categoryLabelHe(t.categoryKey, catExtras),
         description: t.description,
         bookedAt: t.bookedAt.toISOString(),
       }));
 
     const balanceSheet = {
       month: focusKey,
-      incomeTotal: mom.income.current,
-      expenseTotal: mom.expense.current,
-      net: mom.net.current,
+      incomeTotal: focusFacts.flows.income,
+      expenseTotal: focusFacts.flows.expense,
+      allocatedToGoals: focusFacts.flows.allocatedToGoals,
+      net: focusFacts.flows.netAfterGoals,
+      netOperating: focusFacts.flows.net,
+      leftover: focusFacts.budget.leftover,
       incomeByCategory: incomeBreakdown,
       expenseByCategory: categoryBreakdown,
       topTransactions,
@@ -229,7 +243,7 @@ export class IntelligenceService {
       if (t.direction !== "EXPENSE") continue;
       if (t.categoryKey === "goal_funding") continue;
       const amount = Number(t.amount);
-      const nature = categoryNature(t.categoryKey);
+      const nature = categoryNature(t.categoryKey, catExtras);
       if (nature === "fixed" || nature === "periodic") {
         fixedCats[t.categoryKey] = (fixedCats[t.categoryKey] || 0) + amount;
       } else {
@@ -244,7 +258,7 @@ export class IntelligenceService {
         items: Object.entries(map)
           .map(([key, amount]) => ({
             key,
-            labelHe: categoryLabelHe(key),
+            labelHe: categoryLabelHe(key, catExtras),
             amount,
             sharePct: total ? Math.round((amount / total) * 100) : 0,
           }))
@@ -272,6 +286,8 @@ export class IntelligenceService {
     return {
       monthsBack: months,
       selectedMonth: focusKey,
+      formulaVersion: focusFacts.formulaVersion,
+      monthFacts: focusFacts,
       period: selectedPeriod,
       monthlySeries,
       mom,
@@ -291,6 +307,7 @@ export class IntelligenceService {
       "\uFEFFsection,category,amount,direction",
       `summary,income_total,${sheet?.incomeTotal ?? 0},INCOME`,
       `summary,expense_total,${sheet?.expenseTotal ?? 0},EXPENSE`,
+      `summary,allocated_to_goals,${sheet?.allocatedToGoals ?? 0},GOALS`,
       `summary,net,${sheet?.net ?? 0},NET`,
     ];
     for (const row of sheet?.incomeByCategory || []) {
@@ -311,11 +328,41 @@ export class IntelligenceService {
     return `# MoneyTail balance ${month}\n${lines.join("\n")}\n`;
   }
 
-  async analyze(userId: string) {
+  async analyze(userId: string, selectedMonth?: string) {
     const now = new Date();
-    const period = await this.resolveFocusPeriod(userId, now);
-    const focusStart = period.focusStart;
-    const focusEnd = period.focusEnd;
+    let focusStart: Date;
+    let focusEnd: Date;
+    let isCurrentMonth: boolean;
+    let labelHe: string;
+    let monthsNeeded = 6;
+
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      const [y, m] = selectedMonth.split("-").map(Number);
+      focusStart = new Date(y, m - 1, 1);
+      focusEnd = new Date(y, m, 1);
+      isCurrentMonth =
+        focusStart.getFullYear() === now.getFullYear() &&
+        focusStart.getMonth() === now.getMonth();
+      labelHe = focusStart.toLocaleDateString("he-IL", {
+        month: "long",
+        year: "numeric",
+      });
+    } else {
+      const resolved = await this.resolveFocusPeriod(userId, now);
+      focusStart = resolved.focusStart;
+      focusEnd = resolved.focusEnd;
+      isCurrentMonth = resolved.isCurrentMonth;
+      labelHe = resolved.labelHe;
+      monthsNeeded = resolved.monthsNeeded;
+    }
+
+    const period = {
+      isCurrentMonth,
+      focusStart,
+      focusEnd,
+      labelHe,
+      monthsNeeded,
+    };
     const prevStart = new Date(
       focusStart.getFullYear(),
       focusStart.getMonth() - 1,
@@ -327,11 +374,10 @@ export class IntelligenceService {
       1,
     );
 
-    const [accounts, goals, monthTx, prevTx, recentTx, dismissed] =
+    const focusMonthKey = monthKey(focusStart);
+    const [facts, goals, monthTx, prevTx, recentTx, dismissed] =
       await Promise.all([
-        this.prisma.financialAccount.findMany({
-          where: { userId, isActive: true },
-        }),
+        this.monthFacts.forMonth(userId, focusMonthKey),
         this.prisma.goal.findMany({ where: { userId } }),
         this.prisma.transaction.findMany({
           where: {
@@ -355,15 +401,18 @@ export class IntelligenceService {
       ]);
 
     const dismissedTypes = new Set(dismissed.map((a) => a.type));
-    const availableBalance = accounts.reduce(
-      (s, a) => s + Number(a.currentBalance),
-      0,
-    );
-    const incomeMtd = sumDir(monthTx, "INCOME");
-    const expenseMtd = sumDir(monthTx, "EXPENSE");
-    const expensePrev = sumDir(prevTx, "EXPENSE");
+    const availableBalance = facts.checkingBalanceNow;
+    const incomeMtd = facts.flows.income;
+    const expenseMtd = facts.flows.expense;
+    const allocatedToGoalsMtd = facts.flows.allocatedToGoals;
+    const expensePrev = prevTx
+      .filter(
+        (t) =>
+          t.direction === "EXPENSE" && t.categoryKey !== "goal_funding",
+      )
+      .reduce((s, t) => s + Number(t.amount), 0);
     const incomePrev = sumDir(prevTx, "INCOME");
-    const netMtd = incomeMtd - expenseMtd;
+    const netMtd = facts.flows.net;
 
     const byCategoryMonth = groupExpense(monthTx);
     const byCategoryPrev = groupExpense(prevTx);
@@ -686,7 +735,7 @@ export class IntelligenceService {
     recommendations.sort((a, b) => b.score - a.score);
 
     let completeness = 15;
-    if (accounts.length > 0) completeness += 20;
+    if (facts.meta.hasCheckingAccount) completeness += 20;
     if (monthTx.length >= 3) completeness += 20;
     if (goals.length > 0) completeness += 15;
     if (incomeMtd > 0) completeness += 15;
@@ -701,7 +750,7 @@ export class IntelligenceService {
           35 +
             (netMtd >= 0 ? 20 : -12) +
             (goals.length > 0 ? 12 : 0) +
-            (accounts.length > 0 ? 12 : 0) +
+            (facts.meta.hasCheckingAccount ? 12 : 0) +
             (overdraftRisk.level === "low"
               ? 12
               : overdraftRisk.level === "medium"
@@ -739,9 +788,12 @@ export class IntelligenceService {
 
     return {
       period,
+      formulaVersion: facts.formulaVersion,
+      monthFacts: facts,
       availableBalance,
       incomeMtd,
       expenseMtd,
+      allocatedToGoalsMtd,
       netMtd,
       expensePrev,
       incomePrev,
@@ -869,7 +921,9 @@ function groupExpense(
   txs: Array<{ direction: string; categoryKey: string; amount: unknown }>,
 ) {
   const map: Record<string, number> = {};
-  for (const t of txs.filter((x) => x.direction === "EXPENSE")) {
+  for (const t of txs.filter(
+    (x) => x.direction === "EXPENSE" && x.categoryKey !== "goal_funding",
+  )) {
     map[t.categoryKey] = (map[t.categoryKey] || 0) + Number(t.amount);
   }
   return map;

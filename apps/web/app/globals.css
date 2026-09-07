@@ -394,8 +394,8 @@ textarea {
 }
 
 .chart-pair .bar {
-  width: 42%;
-  max-width: 18px;
+  width: 28%;
+  max-width: 14px;
   border-radius: 8px 8px 4px 4px;
   min-height: 4px;
   transition: height 0.35s ease;
@@ -407,6 +407,10 @@ textarea {
 
 .chart-pair .bar.expense {
   background: linear-gradient(180deg, #ff9f43, var(--accent-warm));
+}
+
+.chart-pair .bar.goals {
+  background: linear-gradient(180deg, #74b9ff, var(--accent-2, #0984e3));
 }
 
 .chart-label {
@@ -439,6 +443,10 @@ textarea {
 
 .chart-legend .lg-expense::before {
   background: var(--accent-warm);
+}
+
+.chart-legend .lg-goals::before {
+  background: var(--accent-2, #0984e3);
 }
 
 .cat-bars {

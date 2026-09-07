@@ -10,6 +10,7 @@ import { IntelligenceModule } from "./intelligence/intelligence.module";
 import { DocumentsModule } from "./documents/documents.module";
 import { BudgetModule } from "./budget/budget.module";
 import { CategoriesModule } from "./categories/categories.module";
+import { MonthFactsModule } from "./month-facts/month-facts.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -25,6 +26,7 @@ import { HealthController } from "./health.controller";
     DocumentsModule,
     BudgetModule,
     CategoriesModule,
+    MonthFactsModule,
   ],
   controllers: [HealthController],
 })

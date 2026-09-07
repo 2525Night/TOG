@@ -1,15 +1,30 @@
 "use client";
 
-type Point = { label: string; income: number; expense: number; net: number };
+type Point = {
+  label: string;
+  income: number;
+  expense: number;
+  toGoals?: number;
+  net: number;
+};
 
 export function MomBars({ series }: { series: Point[] }) {
   const max = Math.max(
     1,
-    ...series.flatMap((p) => [p.income, p.expense, Math.abs(p.net)]),
+    ...series.flatMap((p) => [
+      p.income,
+      p.expense,
+      p.toGoals || 0,
+      Math.abs(p.net),
+    ]),
   );
 
   return (
-    <div className="chart-bars" role="img" aria-label="מגמת הכנסות והוצאות">
+    <div
+      className="chart-bars"
+      role="img"
+      aria-label="מגמת הכנסות, הוצאות וליעדים"
+    >
       {series.map((p) => (
         <div className="chart-col" key={p.label}>
           <div className="chart-pair">
@@ -23,6 +38,13 @@ export function MomBars({ series }: { series: Point[] }) {
               style={{ height: `${(p.expense / max) * 100}%` }}
               title={`הוצאות ${Math.round(p.expense)}`}
             />
+            {(p.toGoals || 0) > 0.005 && (
+              <div
+                className="bar goals"
+                style={{ height: `${((p.toGoals || 0) / max) * 100}%` }}
+                title={`ליעדים ${Math.round(p.toGoals || 0)}`}
+              />
+            )}
           </div>
           <div className="chart-label">{p.label.slice(5)}</div>
         </div>
@@ -262,6 +284,19 @@ export function BudgetPie({
             </li>
           );
         })}
+        {leftover < -0.005 && (
+          <li>
+            <span
+              className="budget-pie-swatch"
+              style={{ background: "var(--danger)" }}
+              aria-hidden
+            />
+            <span className="budget-pie-label">גירעון</span>
+            <strong className="tx-out">
+              ₪{Math.round(Math.abs(leftover)).toLocaleString("he-IL")}
+            </strong>
+          </li>
+        )}
       </ul>
     </div>
   );

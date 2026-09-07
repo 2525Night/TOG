@@ -50,8 +50,11 @@ export class IntelligenceController {
   }
 
   @Get("insights/analysis")
-  analysis(@CurrentUser() user: AuthUser) {
-    return this.intelligence.analyze(user.userId);
+  analysis(
+    @CurrentUser() user: AuthUser,
+    @Query("month") month?: string,
+  ) {
+    return this.intelligence.analyze(user.userId, month || undefined);
   }
 
   @Post("alerts/:id/dismiss")

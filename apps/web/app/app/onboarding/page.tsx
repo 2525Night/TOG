@@ -112,7 +112,7 @@ export default function OnboardingPage() {
               />
             </label>
             <label className="field">
-              <span>יתרה התחלתית (₪)</span>
+              <span>יתרה נוכחית בעו״ש (₪)</span>
               <input
                 type="number"
                 min="0"
@@ -121,6 +121,9 @@ export default function OnboardingPage() {
                 onChange={(e) => setStartingBalance(e.target.value)}
                 required
               />
+              <span className="muted" style={{ fontSize: "0.82rem" }}>
+                כמה יש בחשבון עכשיו — כולל מה שכבר נכנס החודש
+              </span>
             </label>
             <button className="btn" type="button" onClick={() => setStep(1)}>
               המשך

@@ -62,10 +62,29 @@ type BudgetSnap = {
   fixed: {
     actualTotal: number;
     expectedTotal: number;
+    basisForLeftover?: "expected" | "actual";
     items: FixedBudgetItem[];
   };
   flexible: { actualTotal: number };
   allocatedToGoals: number;
+};
+
+/** Canonical month numbers from GET /month-facts */
+type MonthFacts = {
+  formulaVersion: string;
+  month: string;
+  checkingBalanceNow: number;
+  flows: {
+    income: number;
+    expense: number;
+    allocatedToGoals: number;
+    net: number;
+  };
+  budget: {
+    fixed: BudgetSnap["fixed"];
+    flexible: BudgetSnap["flexible"];
+    leftover: number;
+  };
 };
 
 type AddDraft = {
@@ -228,6 +247,7 @@ function MoneyInner() {
   const [txs, setTxs] = useState<Tx[]>([]);
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [budget, setBudget] = useState<BudgetSnap | null>(null);
+  const [monthFacts, setMonthFacts] = useState<MonthFacts | null>(null);
   const [userCats, setUserCats] = useState<UserCat[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -316,9 +336,9 @@ function MoneyInner() {
     return banks[0] || accounts[0] || null;
   }, [accounts]);
 
-  const checkingBalance = checkingAccount
-    ? Number(checkingAccount.currentBalance)
-    : 0;
+  const checkingBalance =
+    monthFacts?.checkingBalanceNow ??
+    (checkingAccount ? Number(checkingAccount.currentBalance) : 0);
 
   const monthTxs = useMemo(() => txs, [txs]);
 
@@ -355,13 +375,23 @@ function MoneyInner() {
         .filter((t) => t.direction === "INCOME")
         .reduce((s, t) => s + Number(t.amount), 0);
       const expense = items
-        .filter((t) => t.direction === "EXPENSE")
+        .filter(
+          (t) =>
+            t.direction === "EXPENSE" && t.categoryKey !== "goal_funding",
+        )
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const toGoals = items
+        .filter(
+          (t) =>
+            t.direction === "EXPENSE" && t.categoryKey === "goal_funding",
+        )
         .reduce((s, t) => s + Number(t.amount), 0);
       return {
         key,
         label: dayLabelHe(items[0].bookedAt),
         items,
-        net: income - expense,
+        net: income - expense - toGoals,
+        toGoals,
       };
     });
   }, [filtered]);
@@ -376,27 +406,34 @@ function MoneyInner() {
     }
   }, [dirFromUrl]);
 
-  const monthIncome = useMemo(
-    () =>
-      monthTxs
-        .filter((t) => t.direction === "INCOME")
-        .reduce((s, t) => s + Number(t.amount), 0),
-    [monthTxs],
-  );
-  const monthExpense = useMemo(
-    () =>
-      monthTxs
-        .filter((t) => t.direction === "EXPENSE")
-        .reduce((s, t) => s + Number(t.amount), 0),
-    [monthTxs],
-  );
+  const monthIncome =
+    monthFacts?.flows.income ??
+    monthTxs
+      .filter((t) => t.direction === "INCOME")
+      .reduce((s, t) => s + Number(t.amount), 0);
+  const monthExpense =
+    monthFacts?.flows.expense ??
+    monthTxs
+      .filter(
+        (t) =>
+          t.direction === "EXPENSE" && t.categoryKey !== "goal_funding",
+      )
+      .reduce((s, t) => s + Number(t.amount), 0);
+  const monthToGoals =
+    monthFacts?.flows.allocatedToGoals ??
+    monthTxs
+      .filter(
+        (t) =>
+          t.direction === "EXPENSE" && t.categoryKey === "goal_funding",
+      )
+      .reduce((s, t) => s + Number(t.amount), 0);
 
   async function refresh(opts?: { docs?: boolean }) {
     const needDocs = opts?.docs ?? tab === "import";
-    const [a, t, snap, cats, d] = await Promise.all([
+    const [a, t, facts, cats, d] = await Promise.all([
       api<Account[]>("/accounts"),
       api<Tx[]>(`/transactions?month=${month}`),
-      api<BudgetSnap>(`/budget/snapshot?month=${month}`).catch(() => null),
+      api<MonthFacts>(`/month-facts?month=${month}`).catch(() => null),
       api<UserCat[]>("/categories").catch(() => [] as UserCat[]),
       needDocs
         ? api<DocListItem[]>("/documents")
@@ -405,7 +442,18 @@ function MoneyInner() {
     setAccounts(a);
     setTxs(t);
     setUserCats(cats);
-    if (snap) setBudget(snap);
+    setMonthFacts(facts);
+    if (facts) {
+      setBudget({
+        month: facts.month,
+        leftover: facts.budget.leftover,
+        fixed: facts.budget.fixed,
+        flexible: facts.budget.flexible,
+        allocatedToGoals: facts.flows.allocatedToGoals,
+      });
+    } else {
+      setBudget(null);
+    }
     if (d) setDocs(d);
   }
 
@@ -1121,7 +1169,7 @@ function MoneyInner() {
     );
   }
 
-  const flowMax = Math.max(monthIncome, monthExpense, 1);
+  const flowMax = Math.max(monthIncome, monthExpense, monthToGoals, 1);
 
   return (
     <div className="grid money-hub" style={{ gap: "0.85rem" }}>
@@ -1153,7 +1201,7 @@ function MoneyInner() {
         extra={
           budget ? (
             <span>
-              נותר{" "}
+              נותר החודש{" "}
               <strong
                 className={budget.leftover >= 0 ? "tx-in" : "tx-out"}
               >
@@ -1173,10 +1221,16 @@ function MoneyInner() {
       {budget && tab === "txs" && (
         <section className="card month-flow-strip month-flow-sticky">
           <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-            {labelMonthHe(month)} · קבוע {formatIls(budget.fixed.actualTotal)} ·
+            {labelMonthHe(month)} · קבוע{" "}
+            {formatIls(
+              budget.fixed.basisForLeftover === "expected"
+                ? budget.fixed.expectedTotal
+                : budget.fixed.actualTotal,
+            )}
+            {budget.fixed.basisForLeftover === "expected" ? " (צפוי)" : ""} ·
             גמיש {formatIls(budget.flexible.actualTotal)}
-            {budget.allocatedToGoals > 0
-              ? ` · ליעדים ${formatIls(budget.allocatedToGoals)}`
+            {(budget.allocatedToGoals > 0 || monthToGoals > 0)
+              ? ` · ליעדים ${formatIls(budget.allocatedToGoals || monthToGoals)}`
               : ""}
           </p>
           <div className="month-flow-bars" aria-hidden>
@@ -1200,6 +1254,21 @@ function MoneyInner() {
               </div>
               <strong className="tx-out">{formatIls(monthExpense)}</strong>
             </div>
+            {monthToGoals > 0 && (
+              <div className="month-flow-row">
+                <span>ליעדים</span>
+                <div className="month-flow-track">
+                  <div
+                    className="month-flow-fill out"
+                    style={{
+                      width: `${(monthToGoals / flowMax) * 100}%`,
+                      opacity: 0.65,
+                    }}
+                  />
+                </div>
+                <strong>{formatIls(monthToGoals)}</strong>
+              </div>
+            )}
           </div>
         </section>
       )}

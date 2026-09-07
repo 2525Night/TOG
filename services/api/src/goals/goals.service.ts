@@ -6,6 +6,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BudgetService } from "../budget/budget.service";
+import { MonthFactsService } from "../month-facts/month-facts.service";
 import {
   ApplyStandingRangeDto,
   ApplySurplusDto,
@@ -127,6 +128,7 @@ export class GoalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly budget: BudgetService,
+    private readonly monthFacts: MonthFactsService,
   ) {}
 
   /** Primary checking account — create BANK if none exists. */
@@ -312,7 +314,7 @@ export class GoalsService {
   async monthPool(userId: string, month?: string) {
     const focus =
       month && /^\d{4}-\d{2}$/.test(month) ? month : monthKey(new Date());
-    const snap = await this.budget.snapshot(userId, focus);
+    const facts = await this.monthFacts.forMonth(userId, focus);
     const { start, end } = monthBounds(focus);
 
     const [commitments, monthFunding, goals] = await Promise.all([
@@ -341,7 +343,7 @@ export class GoalsService {
       ]),
     );
 
-    const allocated = monthFunding.reduce((s, t) => s + Number(t.amount), 0);
+    const allocated = facts.flows.allocatedToGoals;
     const doneMerchants = new Set(
       monthFunding.map((t) => t.merchantNorm).filter(Boolean),
     );
@@ -354,13 +356,14 @@ export class GoalsService {
       })
       .reduce((s, c) => s + Number(c.expectedAmount), 0);
 
-    const leftover = Math.max(0, snap.leftover);
+    const leftover = facts.budget.leftover;
     const free = Math.max(0, leftover - plannedStanding);
     const poolBase = leftover + allocated;
     const tight = plannedStanding > leftover + 0.01;
 
     return {
       month: focus,
+      formulaVersion: facts.formulaVersion,
       leftover,
       allocated: Math.round(allocated * 100) / 100,
       plannedStanding: Math.round(plannedStanding * 100) / 100,

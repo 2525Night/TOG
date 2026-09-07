@@ -7,7 +7,7 @@ import { api, setToken } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("test4@gmail.com");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -54,14 +54,13 @@ export default function LoginPage() {
           />
         </label>
         <label className="field">
-          <span>סיסמה</span>
+          <span>סיסמה (אופציונלי)</span>
           <input
             type="password"
-            required
-            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
+            placeholder="השאר ריק אם אין סיסמה"
           />
         </label>
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}

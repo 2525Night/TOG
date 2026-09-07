@@ -2,15 +2,19 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { categoryLabelHe, categoryNature } from "./nature";
+import { MonthFactsService } from "../month-facts/month-facts.service";
+import type { BudgetItemStatus } from "../month-facts/types";
 
-export type BudgetItemStatus = "paid" | "partial" | "pending" | "over";
+export type { BudgetItemStatus };
 
+/** @deprecated Prefer MonthFacts; kept for API compatibility. */
 export type BudgetSnapshot = {
   month: string;
   incomeActual: number;
   fixed: {
     expectedTotal: number;
     actualTotal: number;
+    basisForLeftover: "expected" | "actual";
     items: Array<{
       commitmentId?: string;
       titleHe: string;
@@ -32,16 +36,8 @@ export type BudgetSnapshot = {
   };
   afterFixed: number;
   leftover: number;
-  /** Amount already steered to goals this month (category goal_funding). */
   allocatedToGoals: number;
 };
-
-function monthBounds(month: string) {
-  const [y, m] = month.split("-").map(Number);
-  const start = new Date(y, m - 1, 1);
-  const end = new Date(y, m, 1);
-  return { start, end };
-}
 
 function monthKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -49,174 +45,14 @@ function monthKey(d: Date) {
 
 @Injectable()
 export class BudgetService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthFacts: MonthFactsService,
+  ) {}
 
+  /** Thin projection of MonthFacts — single calculation path. */
   async snapshot(userId: string, month?: string): Promise<BudgetSnapshot> {
-    const focus =
-      month && /^\d{4}-\d{2}$/.test(month)
-        ? month
-        : monthKey(new Date());
-    const { start, end } = monthBounds(focus);
-
-    const [txs, commitments, settings, userCats] = await Promise.all([
-      this.prisma.transaction.findMany({
-        where: { userId, bookedAt: { gte: start, lt: end } },
-      }),
-      this.prisma.budgetCommitment.findMany({
-        where: { userId, active: true },
-      }),
-      this.prisma.userBudgetSettings.findUnique({ where: { userId } }),
-      this.prisma.userCategory.findMany({ where: { userId } }),
-    ]);
-
-    const catExtras = {
-      natures: Object.fromEntries(
-        userCats.map((c) => [c.key, c.nature as "fixed" | "variable" | "periodic"]),
-      ),
-      labels: Object.fromEntries(userCats.map((c) => [c.key, c.labelHe])),
-    };
-
-    const incomeActual = txs
-      .filter((t) => t.direction === "INCOME")
-      .reduce((s, t) => s + Number(t.amount), 0);
-
-    const expenseTxs = txs.filter((t) => t.direction === "EXPENSE");
-
-    const budgetCommitments = commitments.filter(
-      (c) =>
-        c.categoryKey !== "goal_funding" &&
-        !(c.merchantNorm || "").startsWith("goal:"),
-    );
-
-    const expectedTotal = budgetCommitments.reduce((s, c) => {
-      const amt = Number(c.expectedAmount);
-      return s + (c.cadence === "YEARLY" ? amt / 12 : amt);
-    }, 0);
-
-    type FixedItem = {
-      commitmentId?: string;
-      titleHe: string;
-      categoryKey: string;
-      expected: number;
-      actual: number;
-      status: BudgetItemStatus;
-    };
-
-    const matchedTxIds = new Set<string>();
-    const items: FixedItem[] = budgetCommitments.map((c) => {
-      const expected =
-        c.cadence === "YEARLY"
-          ? Number(c.expectedAmount) / 12
-          : Number(c.expectedAmount);
-      const matched = expenseTxs.filter((t) => {
-        if (c.merchantNorm) {
-          return t.merchantNorm === c.merchantNorm;
-        }
-        return t.categoryKey === c.categoryKey;
-      });
-      for (const t of matched) matchedTxIds.add(t.id);
-      const actual = matched.reduce((s, t) => s + Number(t.amount), 0);
-      let status: BudgetItemStatus = "pending";
-      if (actual <= 0) status = "pending";
-      else if (actual >= expected * 0.95 && actual <= expected * 1.05)
-        status = "paid";
-      else if (actual > expected * 1.05) status = "over";
-      else status = "partial";
-      return {
-        commitmentId: c.id,
-        titleHe: c.titleHe,
-        categoryKey: c.categoryKey,
-        expected: Math.round(expected * 100) / 100,
-        actual: Math.round(actual * 100) / 100,
-        status,
-      };
-    });
-
-    // Fixed actual = commitment-matched + other fixed-nature expenses
-    let fixedActualFromNature = 0;
-    let flexibleActual = 0;
-    let allocatedToGoals = 0;
-    const flexibleByCat: Record<string, number> = {};
-
-    for (const t of expenseTxs) {
-      const amt = Number(t.amount);
-      if (t.categoryKey === "goal_funding") {
-        allocatedToGoals += amt;
-        continue;
-      }
-      const nature = categoryNature(t.categoryKey, catExtras);
-      if (matchedTxIds.has(t.id) || nature === "fixed" || nature === "periodic") {
-        if (!matchedTxIds.has(t.id)) fixedActualFromNature += amt;
-      } else {
-        flexibleActual += amt;
-        flexibleByCat[t.categoryKey] =
-          (flexibleByCat[t.categoryKey] || 0) + amt;
-      }
-    }
-
-    const fixedActualTotal =
-      items.reduce((s, i) => s + i.actual, 0) + fixedActualFromNature;
-
-    // Uncommitted fixed categories as synthetic items for visibility
-    const committedCats = new Set(budgetCommitments.map((c) => c.categoryKey));
-    const extraFixed: FixedItem[] = [];
-    const byFixedCat: Record<string, number> = {};
-    for (const t of expenseTxs) {
-      if (matchedTxIds.has(t.id)) continue;
-      const nature = categoryNature(t.categoryKey, catExtras);
-      if (nature !== "fixed" && nature !== "periodic") continue;
-      if (committedCats.has(t.categoryKey)) continue;
-      byFixedCat[t.categoryKey] =
-        (byFixedCat[t.categoryKey] || 0) + Number(t.amount);
-    }
-    for (const [key, actual] of Object.entries(byFixedCat)) {
-      extraFixed.push({
-        titleHe: categoryLabelHe(key, catExtras),
-        categoryKey: key,
-        expected: 0,
-        actual: Math.round(actual * 100) / 100,
-        status: "paid",
-      });
-    }
-
-    const allFixedItems = [...items, ...extraFixed].sort(
-      (a, b) => b.actual - a.actual || b.expected - a.expected,
-    );
-
-    const flexibleCap =
-      settings?.flexibleCap != null ? Number(settings.flexibleCap) : null;
-
-    const useExpected = fixedActualTotal < 0.01 && expectedTotal > 0;
-    const afterFixed = incomeActual - (useExpected ? expectedTotal : fixedActualTotal);
-    const leftover = afterFixed - flexibleActual - allocatedToGoals;
-
-    return {
-      month: focus,
-      incomeActual: Math.round(incomeActual * 100) / 100,
-      fixed: {
-        expectedTotal: Math.round(expectedTotal * 100) / 100,
-        actualTotal: Math.round(fixedActualTotal * 100) / 100,
-        items: allFixedItems,
-      },
-      flexible: {
-        actualTotal: Math.round(flexibleActual * 100) / 100,
-        cap: flexibleCap,
-        remainingToCap:
-          flexibleCap != null
-            ? Math.round((flexibleCap - flexibleActual) * 100) / 100
-            : null,
-        byCategory: Object.entries(flexibleByCat)
-          .map(([key, amount]) => ({
-            key,
-            labelHe: categoryLabelHe(key, catExtras),
-            amount: Math.round(amount * 100) / 100,
-          }))
-          .sort((a, b) => b.amount - a.amount),
-      },
-      allocatedToGoals: Math.round(allocatedToGoals * 100) / 100,
-      afterFixed: Math.round(afterFixed * 100) / 100,
-      leftover: Math.round(leftover * 100) / 100,
-    };
+    return this.monthFacts.asBudgetSnapshot(userId, month);
   }
 
   listCommitments(userId: string) {
@@ -279,9 +115,7 @@ export class BudgetService {
       select: { merchantNorm: true, categoryKey: true },
     });
     const existingKeys = new Set(
-      existing.map(
-        (e) => `${e.merchantNorm || ""}|${e.categoryKey}`,
-      ),
+      existing.map((e) => `${e.merchantNorm || ""}|${e.categoryKey}`),
     );
 
     type Agg = {
@@ -339,7 +173,9 @@ export class BudgetService {
       });
     }
 
-    return out.sort((a, b) => b.expectedAmount - a.expectedAmount).slice(0, 8);
+    return out
+      .sort((a, b) => b.expectedAmount - a.expectedAmount)
+      .slice(0, 8);
   }
 
   async confirmSuggestion(

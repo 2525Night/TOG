@@ -1,52 +1,22 @@
-/** Keep in sync with packages/shared CATEGORY_NATURE. */
+/**
+ * API helpers for category nature/labels.
+ * Defaults come from @moneytail/shared (single source of truth).
+ */
+import {
+  CATEGORY_NATURE,
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  categoryNature as sharedCategoryNature,
+  natureLabelHe as sharedNatureLabelHe,
+  type CategoryNature,
+} from "@moneytail/shared";
 
-export type CategoryNature = "fixed" | "variable" | "periodic";
+export type { CategoryNature };
 
-const CATEGORY_NATURE: Record<string, CategoryNature> = {
-  housing: "fixed",
-  utilities: "fixed",
-  cellular: "fixed",
-  internet: "fixed",
-  insurance: "fixed",
-  loans: "fixed",
-  subscriptions: "fixed",
-  banking: "fixed",
-  food: "variable",
-  transport: "variable",
-  shopping: "variable",
-  entertainment: "variable",
-  travel: "variable",
-  healthcare: "variable",
-  education: "variable",
-  children: "variable",
-  goal_funding: "variable",
-  other: "variable",
-};
-
-const CATEGORY_HE: Record<string, string> = {
-  housing: "דיור",
-  food: "מזון",
-  transport: "תחבורה",
-  utilities: "חשבונות בית",
-  cellular: "סלולר",
-  internet: "אינטרנט",
-  subscriptions: "מנויים",
-  healthcare: "בריאות",
-  insurance: "ביטוח",
-  shopping: "קניות",
-  entertainment: "בילויים",
-  education: "חינוך",
-  children: "ילדים",
-  loans: "הלוואות",
-  banking: "עמלות בנק",
-  travel: "נסיעות",
-  goal_funding: "ליעדים",
-  other: "אחר",
-  salary: "משכורת",
-  freelance: "פרילנס",
-  benefits: "קצבאות / הטבות",
-  other_income: "הכנסה אחרת",
-};
+const CATEGORY_HE: Record<string, string> = Object.fromEntries([
+  ...EXPENSE_CATEGORIES.map((c) => [c.key, c.labelHe]),
+  ...INCOME_CATEGORIES.map((c) => [c.key, c.labelHe]),
+]);
 
 export type CategoryExtras = {
   natures?: Record<string, CategoryNature>;
@@ -59,7 +29,7 @@ export function categoryNature(
 ): CategoryNature {
   const fromUser = extras?.natures?.[categoryKey];
   if (fromUser) return fromUser;
-  return CATEGORY_NATURE[categoryKey] || "variable";
+  return sharedCategoryNature(categoryKey);
 }
 
 export function categoryLabelHe(
@@ -75,7 +45,8 @@ export function categoryLabelHe(
 }
 
 export function natureLabelHe(nature: CategoryNature): string {
-  if (nature === "fixed") return "קבוע";
-  if (nature === "periodic") return "מחזורי";
-  return "משתנה";
+  return sharedNatureLabelHe(nature);
 }
+
+/** Re-export shared map for callers that need the raw defaults. */
+export { CATEGORY_NATURE };

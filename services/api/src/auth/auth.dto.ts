@@ -17,6 +17,7 @@ export class LoginDto {
   @IsEmail()
   email!: string;
 
+  @IsOptional()
   @IsString()
-  password!: string;
+  password?: string;
 }

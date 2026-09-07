@@ -88,7 +88,7 @@ export class AuthService implements OnModuleInit {
     if (!user) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
+    const ok = await bcrypt.compare(dto.password ?? "", user.passwordHash);
     if (!ok) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
@@ -139,7 +139,8 @@ export class AuthService implements OnModuleInit {
       },
     });
 
-    // Optional estimated income as a real ledger row only if provided.
+    // Optional estimated income as a cashflow row for this month.
+    // Balance stays at startingBalance (יתרה נוכחית בעו״ש) — do not double-count.
     if (dto.monthlyIncomeNet > 0) {
       const bookedAt = new Date();
       bookedAt.setDate(1);
@@ -154,14 +155,6 @@ export class AuthService implements OnModuleInit {
           bookedAt,
           sourceType: "USER_INPUT",
           userConfirmed: true,
-        },
-      });
-      await this.prisma.financialAccount.update({
-        where: { id: account.id },
-        data: {
-          currentBalance: {
-            increment: dto.monthlyIncomeNet,
-          },
         },
       });
     }

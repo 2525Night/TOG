@@ -931,7 +931,7 @@ function GoalsInner() {
         extra={
           pool ? (
             <span>
-              נותר{" "}
+              נותר החודש{" "}
               <strong className={pool.leftover >= 0 ? "tx-in" : "tx-out"}>
                 {formatIls(pool.leftover)}
               </strong>

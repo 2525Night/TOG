@@ -24,7 +24,9 @@ type Report = {
     month: string;
     income: number;
     expense: number;
+    allocatedToGoals?: number;
     net: number;
+    netAfterGoals?: number;
   }>;
   categoryBreakdown: Array<{
     key: string;
@@ -42,6 +44,8 @@ type Report = {
     month: string;
     incomeTotal: number;
     expenseTotal: number;
+    allocatedToGoals?: number;
+    leftover?: number;
     net: number;
     incomeByCategory: Array<{
       key: string;
@@ -85,11 +89,34 @@ type Report = {
       }>;
     };
   };
+  formulaVersion?: string;
+  monthFacts?: {
+    flows: {
+      income: number;
+      expense: number;
+      allocatedToGoals: number;
+      net: number;
+      netAfterGoals?: number;
+    };
+    budget: {
+      leftover: number;
+      fixed: {
+        expectedTotal: number;
+        actualTotal: number;
+        basisForLeftover?: "expected" | "actual";
+      };
+      flexible: { actualTotal: number };
+    };
+  };
 };
 
 type BudgetSnap = {
   incomeActual: number;
-  fixed: { expectedTotal: number; actualTotal: number };
+  fixed: {
+    expectedTotal: number;
+    actualTotal: number;
+    basisForLeftover?: "expected" | "actual";
+  };
   flexible: { actualTotal: number };
   leftover: number;
   allocatedToGoals?: number;
@@ -131,16 +158,33 @@ function ReportsInner() {
   const [exportBusy, setExportBusy] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     setError(null);
-    Promise.all([
-      api<Report>(`/reports/overview?months=${months}&month=${month}`),
-      api<BudgetSnap>(`/budget/snapshot?month=${month}`).catch(() => null),
-    ])
-      .then(([report, snap]) => {
+    setData(null);
+    setBudget(null);
+    api<Report>(`/reports/overview?months=${months}&month=${month}`)
+      .then((report) => {
+        if (cancelled) return;
         setData(report);
-        setBudget(snap);
+        if (report.monthFacts) {
+          setBudget({
+            incomeActual: report.monthFacts.flows.income,
+            fixed: report.monthFacts.budget.fixed,
+            flexible: report.monthFacts.budget.flexible,
+            leftover: report.monthFacts.budget.leftover,
+            allocatedToGoals: report.monthFacts.flows.allocatedToGoals,
+          });
+        } else {
+          setBudget(null);
+        }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "שגיאה"));
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "שגיאה");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [months, month]);
 
   async function exportCsv() {
@@ -169,9 +213,20 @@ function ReportsInner() {
   if (!data) return <p className="muted">טוען מאזן…</p>;
 
   const sheet = data.balanceSheet;
-  const income = sheet?.incomeTotal ?? data.mom.income.current;
-  const expense = sheet?.expenseTotal ?? data.mom.expense.current;
-  const net = sheet?.net ?? data.mom.net.current;
+  const facts = data.monthFacts;
+  const income =
+    facts?.flows.income ?? sheet?.incomeTotal ?? data.mom.income.current;
+  const expense =
+    facts?.flows.expense ?? sheet?.expenseTotal ?? data.mom.expense.current;
+  const toGoalsAmt =
+    facts?.flows.allocatedToGoals ??
+    budget?.allocatedToGoals ??
+    sheet?.allocatedToGoals ??
+    0;
+  const net =
+    facts?.flows.netAfterGoals ??
+    sheet?.net ??
+    income - expense - toGoalsAmt;
   const txCount = sheet?.topTransactions?.length ?? 0;
   const sparse =
     (income <= 0 && expense > 0) ||
@@ -189,9 +244,11 @@ function ReportsInner() {
         0;
   const flexAmt =
     budget?.flexible.actualTotal ?? data.expenseByNature?.variable.total ?? 0;
-  const toGoals = budget?.allocatedToGoals ?? 0;
+  const toGoals = toGoalsAmt;
   const leftoverAmt =
-    budget?.leftover ?? Math.max(0, income - fixedAmt - flexAmt - toGoals);
+    budget?.leftover ??
+    sheet?.leftover ??
+    income - fixedAmt - flexAmt - toGoals;
 
   const expenseHref = (item: { key?: string }) =>
     item.key
@@ -201,6 +258,21 @@ function ReportsInner() {
     item.key
       ? moneyHref(month, { category: item.key, dir: "INCOME" })
       : undefined;
+
+  const trendTotals = data.monthlySeries.reduce(
+    (acc, m) => {
+      const goals = m.allocatedToGoals || 0;
+      const netAfter =
+        m.netAfterGoals ?? m.net - goals;
+      return {
+        income: acc.income + m.income,
+        expense: acc.expense + m.expense,
+        toGoals: acc.toGoals + goals,
+        net: acc.net + netAfter,
+      };
+    },
+    { income: 0, expense: 0, toGoals: 0, net: 0 },
+  );
 
   return (
     <div className="grid reports-page" style={{ gap: "0.85rem" }}>
@@ -226,9 +298,24 @@ function ReportsInner() {
         income={income}
         expense={expense}
         extra={
-          <span className={net >= 0 ? "tx-in" : "tx-out"}>
-            נטו החודש <strong>{formatIls(net)}</strong>
-          </span>
+          <>
+            <span className={net >= 0 ? "tx-in" : "tx-out"}>
+              נטו <strong>{formatIls(net)}</strong>
+            </span>
+            {toGoals > 0 && (
+              <span>
+                ליעדים <strong>{formatIls(toGoals)}</strong>
+              </span>
+            )}
+            {budget && (
+              <span>
+                נותר החודש{" "}
+                <strong className={leftoverAmt >= 0 ? "tx-in" : "tx-out"}>
+                  {formatIls(leftoverAmt)}
+                </strong>
+              </span>
+            )}
+          </>
         }
       />
 
@@ -259,7 +346,7 @@ function ReportsInner() {
 
       <section className="card report-hero">
         <div className="report-hero-main">
-          <div className="muted">נטו · {labelMonthHe(month)}</div>
+          <div className="muted">נטו אחרי הוצאות וליעדים · {labelMonthHe(month)}</div>
           <div
             className={`stat-value${net >= 0 ? " tx-in" : " tx-out"}`}
             style={{ margin: "0.15rem 0" }}
@@ -269,6 +356,9 @@ function ReportsInner() {
           </div>
           <p className="muted" style={{ margin: 0 }}>
             מול חודש קודם · <Delta pct={data.mom.net.deltaPct} invert />
+            {toGoals > 0
+              ? ` · ליעדים ${formatIls(toGoals)} · הוצאות ${formatIls(expense)}`
+              : ` · הוצאות ${formatIls(expense)}`}
           </p>
         </div>
         {data.narrativeHe && (
@@ -288,25 +378,42 @@ function ReportsInner() {
             fixed={fixedAmt}
             flexible={flexAmt}
             toGoals={toGoals}
-            leftover={Math.max(0, leftoverAmt)}
+            leftover={leftoverAmt}
           />
+          {budget?.fixed.basisForLeftover === "expected" && (
+            <p className="muted" style={{ margin: "0.65rem 0 0", fontSize: "0.85rem" }}>
+              קבועים לפי צפוי — עדיין לא נרשמו תשלומים לחודש זה
+            </p>
+          )}
         </section>
       )}
 
       <section className="card report-trend">
         <div className="list-row" style={{ border: "none", paddingTop: 0 }}>
           <h2 style={{ margin: 0 }}>מגמת {months} חודשים</h2>
+          <span className="muted" style={{ fontSize: "0.85rem" }}>
+            עד {labelMonthHe(month)}
+          </span>
         </div>
+
+        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+          סכומים לכל הטווח · בגרף — פירוט לפי חודש
+        </p>
 
         <div className="trend-summary">
           <span className="tx-in">
-            הכנסות <strong>{formatIls(income)}</strong>
+            הכנסות <strong>{formatIls(trendTotals.income)}</strong>
           </span>
           <span className="tx-out">
-            הוצאות <strong>{formatIls(expense)}</strong>
+            הוצאות <strong>{formatIls(trendTotals.expense)}</strong>
           </span>
-          <span>
-            נטו <strong>{formatIls(net)}</strong>
+          {trendTotals.toGoals > 0 && (
+            <span>
+              ליעדים <strong>{formatIls(trendTotals.toGoals)}</strong>
+            </span>
+          )}
+          <span className={trendTotals.net >= 0 ? "tx-in" : "tx-out"}>
+            נטו <strong>{formatIls(trendTotals.net)}</strong>
           </span>
         </div>
 
@@ -358,13 +465,15 @@ function ReportsInner() {
         <div className="chart-legend">
           <span className="lg-income">הכנסות</span>
           <span className="lg-expense">הוצאות</span>
+          <span className="lg-goals">ליעדים</span>
         </div>
         <MomBars
           series={data.monthlySeries.map((m) => ({
             label: m.month,
             income: m.income,
             expense: m.expense,
-            net: m.net,
+            toGoals: m.allocatedToGoals || 0,
+            net: m.netAfterGoals ?? m.net - (m.allocatedToGoals || 0),
           }))}
         />
       </section>
