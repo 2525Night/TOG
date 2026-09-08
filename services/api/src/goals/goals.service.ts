@@ -281,19 +281,26 @@ export class GoalsService {
           goalRecent,
         );
         return {
-          ...g,
-          targetAmount: g.targetAmount,
-          currentAmount: g.currentAmount,
+          id: g.id,
+          title: g.title,
+          kind: g.kind,
+          currency: g.currency,
+          targetDate: g.targetDate,
+          sourceType: g.sourceType,
+          userConfirmed: g.userConfirmed,
+          createdAt: g.createdAt,
+          updatedAt: g.updatedAt,
+          targetAmount: Number(g.targetAmount),
+          currentAmount: Number(g.currentAmount),
           createdMonth,
           savedAsOfMonth,
           standing: standing
             ? this.enrichStanding(standing, focus, doneMonths, remaining)
             : null,
           doneThisMonth: goalMonthTx.length > 0,
-          monthAllocated: goalMonthTx.reduce(
-            (s, t) => s + Number(t.amount),
-            0,
-          ),
+          monthAllocated: Math.round(
+            goalMonthTx.reduce((s, t) => s + Number(t.amount), 0) * 100,
+          ) / 100,
           contributions: goalMonthTx.map((t) => ({
             id: t.id,
             amount: Number(t.amount),
@@ -360,6 +367,10 @@ export class GoalsService {
     const free = Math.max(0, leftover - plannedStanding);
     const poolBase = leftover + allocated;
     const tight = plannedStanding > leftover + 0.01;
+    const hasEmergency = goals.some((g) => g.kind === "EMERGENCY");
+    const checkingBalanceNow = facts.checkingBalanceNow;
+    const showReserveCta =
+      !hasEmergency && leftover > 0 && checkingBalanceNow >= 0;
 
     return {
       month: focus,
@@ -370,6 +381,13 @@ export class GoalsService {
       free: Math.round(free * 100) / 100,
       poolBase: Math.round(poolBase * 100) / 100,
       tight,
+      checkingBalanceNow: Math.round(checkingBalanceNow * 100) / 100,
+      hasEmergency,
+      showReserveCta,
+      suggestedReserveTarget: Math.max(
+        3000,
+        Math.round(leftover > 0 ? leftover * 3 : 3000),
+      ),
       labelHe: new Date(
         Number(focus.slice(0, 4)),
         Number(focus.slice(5, 7)) - 1,
@@ -378,11 +396,24 @@ export class GoalsService {
     };
   }
 
-  create(userId: string, dto: CreateGoalDto) {
+  async create(userId: string, dto: CreateGoalDto) {
+    const kind = dto.kind === "EMERGENCY" ? "EMERGENCY" : "GENERAL";
+    if (kind === "EMERGENCY") {
+      const existing = await this.prisma.goal.findFirst({
+        where: { userId, kind: "EMERGENCY" },
+      });
+      if (existing) {
+        throw new BadRequestException("כבר קיימת רזרבה להפתעות");
+      }
+    }
     return this.prisma.goal.create({
       data: {
         userId,
-        title: dto.title,
+        title:
+          kind === "EMERGENCY"
+            ? dto.title.trim() || "רזרבה להפתעות"
+            : dto.title,
+        kind,
         targetAmount: new Prisma.Decimal(dto.targetAmount),
         currentAmount: new Prisma.Decimal(dto.currentAmount ?? 0),
         targetDate: dto.targetDate ? new Date(dto.targetDate) : null,
@@ -765,6 +796,30 @@ export class GoalsService {
     });
     if (!existing) throw new NotFoundException("אין הוראת קבע פעילה");
     return this.budget.deactivateCommitment(userId, existing.id);
+  }
+
+  /** Remove goal; standing stops. Past allocations stay in Transactions (reverse there if needed). */
+  async remove(userId: string, id: string) {
+    const goal = await this.prisma.goal.findFirst({ where: { id, userId } });
+    if (!goal) throw new NotFoundException("יעד לא נמצא");
+    const merchant = goalMerchant(id);
+    await this.prisma.budgetCommitment.updateMany({
+      where: { userId, merchantNorm: merchant, active: true },
+      data: { active: false },
+    });
+    await this.prisma.goal.delete({ where: { id } });
+    await this.prisma.auditEvent.create({
+      data: {
+        userId,
+        action: "GOAL_REMOVED",
+        meta: JSON.stringify({
+          goalId: id,
+          title: goal.title,
+          currentAmount: Number(goal.currentAmount),
+        }),
+      },
+    });
+    return { ok: true };
   }
 
   private buildForecast(

@@ -2,6 +2,29 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { categoryLabelHe, categoryNature } from "../budget/nature";
 import { MonthFactsService } from "../month-facts/month-facts.service";
+import type { MonthFacts } from "../month-facts/types";
+import { projectLiquidity } from "./project-liquidity";
+import { countsAsCashSpend } from "../month-facts/cash-role";
+
+export type IntelligenceTx = {
+  id: string;
+  direction: string;
+  amount: unknown;
+  categoryKey: string;
+  description: string | null;
+  economicRole?: string | null;
+  bookedAt: Date;
+};
+
+/** Optional preloaded facts/txs to avoid duplicate MonthFacts work on dashboard. */
+export type IntelligencePreload = {
+  facts?: MonthFacts;
+  prevFacts?: MonthFacts;
+  factsList?: MonthFacts[];
+  monthTx?: IntelligenceTx[];
+  recentTx?: IntelligenceTx[];
+  txs?: IntelligenceTx[];
+};
 
 export type RecPriority = "high" | "medium" | "low";
 
@@ -33,6 +56,26 @@ export type AlertItem = {
   actionable: boolean;
 };
 
+/**
+ * Light insight contract for dashboard attention (Phase 0).
+ * Conclusion → Meaning → money line → one CTA. No LLM / Roey.
+ * titleHe/bodyHe are emitted as aliases for alert persistence + older clients.
+ */
+export type AttentionItem = {
+  id: string;
+  type: string;
+  /** מסקנה — what to understand first */
+  conclusionHe: string;
+  /** משמעות — plain Hebrew for non-experts */
+  meaningHe: string;
+  moneyLineHe?: string;
+  ctaHe: string;
+  href: string;
+  severity: "high" | "medium" | "low";
+  score: number;
+  alertId?: string;
+};
+
 function monthKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -52,6 +95,7 @@ export class IntelligenceService {
     userId: string,
     monthsBack = 6,
     selectedMonth?: string,
+    preload?: IntelligencePreload,
   ) {
     const now = new Date();
     const period = await this.resolveFocusPeriod(userId, now);
@@ -76,22 +120,26 @@ export class IntelligenceService {
     }
 
     const focusKey = monthKey(focusStart);
+    const lookbackStart = new Date(
+      focusStart.getFullYear(),
+      focusStart.getMonth() - (months - 1),
+      1,
+    );
+
     const [factsList, txs, userCats] = await Promise.all([
-      this.monthFacts.series(userId, monthKeys),
-      this.prisma.transaction.findMany({
-        where: {
-          userId,
-          bookedAt: {
-            gte: new Date(
-              focusStart.getFullYear(),
-              focusStart.getMonth() - (months - 1),
-              1,
-            ),
-            lt: focusEnd,
-          },
-        },
-        orderBy: { bookedAt: "asc" },
-      }),
+      preload?.factsList ?? this.monthFacts.series(userId, monthKeys),
+      preload?.txs
+        ? Promise.resolve(preload.txs)
+        : this.prisma.transaction.findMany({
+            where: {
+              userId,
+              bookedAt: {
+                gte: lookbackStart,
+                lt: focusEnd,
+              },
+            },
+            orderBy: { bookedAt: "asc" },
+          }),
       this.prisma.userCategory.findMany({ where: { userId } }),
     ]);
 
@@ -328,7 +376,11 @@ export class IntelligenceService {
     return `# MoneyTail balance ${month}\n${lines.join("\n")}\n`;
   }
 
-  async analyze(userId: string, selectedMonth?: string) {
+  async analyze(
+    userId: string,
+    selectedMonth?: string,
+    preload?: IntelligencePreload,
+  ) {
     const now = new Date();
     let focusStart: Date;
     let focusEnd: Date;
@@ -375,47 +427,53 @@ export class IntelligenceService {
     );
 
     const focusMonthKey = monthKey(focusStart);
-    const [facts, goals, monthTx, prevTx, recentTx, dismissed] =
+    const prevMonthKey = monthKey(prevStart);
+
+    const [facts, prevFacts, goals, monthTx, recentTx, silenced] =
       await Promise.all([
-        this.monthFacts.forMonth(userId, focusMonthKey),
+        preload?.facts ?? this.monthFacts.forMonth(userId, focusMonthKey),
+        preload?.prevFacts ??
+          this.monthFacts.forMonth(userId, prevMonthKey),
         this.prisma.goal.findMany({ where: { userId } }),
-        this.prisma.transaction.findMany({
-          where: {
-            userId,
-            bookedAt: { gte: focusStart, lt: focusEnd },
-          },
-        }),
-        this.prisma.transaction.findMany({
-          where: {
-            userId,
-            bookedAt: { gte: prevStart, lt: focusStart },
-          },
-        }),
-        this.prisma.transaction.findMany({
-          where: { userId, bookedAt: { gte: lookbackStart } },
-        }),
+        preload?.monthTx
+          ? Promise.resolve(preload.monthTx)
+          : this.prisma.transaction.findMany({
+              where: {
+                userId,
+                bookedAt: { gte: focusStart, lt: focusEnd },
+              },
+            }),
+        preload?.recentTx
+          ? Promise.resolve(preload.recentTx)
+          : this.prisma.transaction.findMany({
+              where: { userId, bookedAt: { gte: lookbackStart } },
+            }),
         this.prisma.alert.findMany({
-          where: { userId, dismissed: true },
-          select: { type: true },
+          where: {
+            userId,
+            OR: [
+              { dismissed: true },
+              { snoozedUntil: { gt: now } },
+            ],
+          },
+          select: { type: true, dismissed: true, snoozedUntil: true },
         }),
       ]);
 
-    const dismissedTypes = new Set(dismissed.map((a) => a.type));
+    const silencedTypes = new Set(silenced.map((a) => a.type));
     const availableBalance = facts.checkingBalanceNow;
     const incomeMtd = facts.flows.income;
     const expenseMtd = facts.flows.expense;
     const allocatedToGoalsMtd = facts.flows.allocatedToGoals;
-    const expensePrev = prevTx
-      .filter(
-        (t) =>
-          t.direction === "EXPENSE" && t.categoryKey !== "goal_funding",
-      )
-      .reduce((s, t) => s + Number(t.amount), 0);
-    const incomePrev = sumDir(prevTx, "INCOME");
+    const expensePrev = prevFacts.flows.expense;
+    const incomePrev = prevFacts.flows.income;
     const netMtd = facts.flows.net;
+    const leftover = facts.budget.leftover;
+    const fixedExpected = facts.budget.fixed.expectedTotal;
+    const fixedActual = facts.budget.fixed.actualTotal;
+    const remainingFixed = Math.max(0, fixedExpected - fixedActual);
 
     const byCategoryMonth = groupExpense(monthTx);
-    const byCategoryPrev = groupExpense(prevTx);
     const topCategories = Object.entries(byCategoryMonth)
       .map(([key, amount]) => ({
         key,
@@ -433,43 +491,30 @@ export class IntelligenceService {
     const day = period.isCurrentMonth
       ? Math.max(now.getDate(), 1)
       : daysInMonth;
-    const projectedExpense = (expenseMtd / day) * daysInMonth;
-    const projectedNet = incomeMtd - projectedExpense;
-    const endBalanceProjected = availableBalance + projectedNet;
+    const daysLeft = Math.max(daysInMonth - day, 0);
+    const flexibleSoFar = facts.budget.flexible.actualTotal;
+    const flexiblePace =
+      day > 0 ? (flexibleSoFar / day) * daysInMonth : flexibleSoFar;
+    const remainingFlexibleGuess = Math.max(0, flexiblePace - flexibleSoFar);
+    const liquidityProj = projectLiquidity({
+      checkingBalanceNow: facts.checkingBalanceNow,
+      availableInPractice: facts.liquidity.availableInPractice,
+      remainingFixed,
+      remainingFlexibleGuess,
+      isCurrentMonth: period.isCurrentMonth,
+    });
+    const projectedOutflow = liquidityProj.projectedOutflow;
+    const endBalanceProjected = liquidityProj.endBalanceProjected;
 
     let overdraftRisk: {
       level: "high" | "medium" | "low";
       messageHe: string;
       alreadyNegative: boolean;
+    } = {
+      level: liquidityProj.level,
+      messageHe: liquidityProj.messageHe,
+      alreadyNegative: liquidityProj.alreadyNegative,
     };
-    if (availableBalance < 0) {
-      overdraftRisk = {
-        level: "high",
-        alreadyNegative: true,
-        messageHe: `החשבון כבר במינוס (₪${Math.round(Math.abs(availableBalance)).toLocaleString("he-IL")}). עומס משיכת היתר פעיל — עדיפות לייצוב תזרים לפני הוצאות חדשות.`,
-      };
-    } else if (endBalanceProjected < 0) {
-      overdraftRisk = {
-        level: "high",
-        alreadyNegative: false,
-        messageHe: `לפי הקצב הנוכחי צפוי מינוס של כ־₪${Math.round(Math.abs(endBalanceProjected)).toLocaleString("he-IL")} עד סוף החודש.`,
-      };
-    } else if (
-      endBalanceProjected < Math.max(availableBalance * 0.15, 500)
-    ) {
-      overdraftRisk = {
-        level: "medium",
-        alreadyNegative: false,
-        messageHe:
-          "הנזילות צפויה להיות דקה לקראת סוף החודש — כדאי לצמצם הוצאות משתנות.",
-      };
-    } else {
-      overdraftRisk = {
-        level: "low",
-        alreadyNegative: false,
-        messageHe: "לא זוהה עומס מינוס גבוה לפי הנתונים הזמינים.",
-      };
-    }
 
     const dataGaps: Array<{
       id: string;
@@ -478,31 +523,40 @@ export class IntelligenceService {
       ctaHe: string;
       href: string;
     }> = [];
+    const prevTxCount = prevFacts.meta.txCount;
     if (monthTx.length === 0) {
       dataGaps.push({
         id: "empty-month",
-        titleHe: "בחודש זה אין תנועות",
-        bodyHe: "המאזן ריק לחודש הנבחר — ייבאו דף חשבון או הוסיפו תנועה.",
+        titleHe: "בחודש זה עדיין אין תנועות",
+        bodyHe:
+          "בלי תנועות אי אפשר לחשב מאזן אמיתי — ייבאו דף חשבון או הוסיפו תנועה אחת.",
         ctaHe: "לייבוא",
-        href: "/app/money?tab=import",
+        href: `/app/money?tab=import&month=${focusMonthKey}`,
       });
     } else if (expenseMtd > 0 && incomeMtd <= 0) {
       dataGaps.push({
         id: "missing-income",
         titleHe: "חסרות הכנסות בחודש",
-        bodyHe: "יש הוצאות בלי הכנסות — המאזן עלול להיות מטעה.",
+        bodyHe:
+          "יש הוצאות בלי הכנסות רשומות — המספרים עלולים להטעות עד שתוסיפו הכנסה או ייבוא.",
         ctaHe: "הוספת הכנסה / ייבוא",
-        href: "/app/money?tab=import",
+        href: `/app/money?tab=import&month=${focusMonthKey}`,
       });
-    } else if (prevTx.length >= 5 && monthTx.length <= 2) {
+    } else if (prevTxCount >= 5 && monthTx.length <= 2) {
       dataGaps.push({
         id: "sparse-month",
-        titleHe: "נתונים חלקיים לחודש",
-        bodyHe: "יש מעט תנועות יחסית לחודש הקודם — ייתכן שחסר ייבוא.",
+        titleHe: "התמונה עדיין חלקית",
+        bodyHe:
+          "יש מעט תנועות יחסית לחודש הקודם — אולי חסר ייבוא. בינתיים לא נציג אזהרות חזקות.",
         ctaHe: "לייבוא",
-        href: "/app/money?tab=import",
+        href: `/app/money?tab=import&month=${focusMonthKey}`,
       });
     }
+
+    const signalsReliable =
+      dataGaps.length === 0 &&
+      incomeMtd > 0 &&
+      monthTx.length >= 3;
 
     const recurring = detectRecurring(recentTx);
     const commitments = await this.prisma.budgetCommitment.findMany({
@@ -515,9 +569,12 @@ export class IntelligenceService {
     const recurringExpected = recurring
       .slice(0, 12)
       .reduce((s, r) => s + r.amount, 0);
-    // Prefer commitments when present; else recurring detection
     const expectedFixedNext =
-      commitmentExpected > 0 ? commitmentExpected : recurringExpected;
+      fixedExpected > 0
+        ? fixedExpected
+        : commitmentExpected > 0
+          ? commitmentExpected
+          : recurringExpected;
     const incomeAvg =
       (incomeMtd + incomePrev) / (incomeMtd > 0 && incomePrev > 0 ? 2 : 1) ||
       incomeMtd ||
@@ -536,15 +593,12 @@ export class IntelligenceService {
       projectedNet:
         Math.round((incomeAvg - expectedFixedNext) * 100) / 100,
       items: [
-        ...commitments.slice(0, 8).map((c) => ({
+        ...facts.budget.fixed.items.slice(0, 8).map((c) => ({
           titleHe: c.titleHe,
-          amount:
-            c.cadence === "YEARLY"
-              ? Math.round((Number(c.expectedAmount) / 12) * 100) / 100
-              : Number(c.expectedAmount),
+          amount: c.expected,
           source: "commitment" as const,
         })),
-        ...(commitmentExpected > 0
+        ...(fixedExpected > 0 || commitmentExpected > 0
           ? []
           : recurring.slice(0, 8).map((r) => ({
               titleHe: r.label,
@@ -554,129 +608,171 @@ export class IntelligenceService {
       ],
     };
 
+    const attention: AttentionItem[] = [];
     const patterns: PatternFinding[] = [];
-    const alerts: AlertItem[] = [];
     const recommendations: RankedRecommendation[] = [];
+    const monthQ = `month=${focusMonthKey}`;
 
-    // Pattern: MoM spend spike
-    if (expensePrev > 0 && expenseMtd > expensePrev * 1.15) {
+    // --- Deduped stories from MonthFacts (conclusion → meaning → money → CTA) ---
+    const availableInPractice = facts.liquidity.availableInPractice;
+    if (
+      (signalsReliable || overdraftRisk.alreadyNegative) &&
+      overdraftRisk.level !== "low"
+    ) {
+      pushAttention(attention, {
+        id: "overdraft",
+        type: "overdraft-forecast",
+        conclusionHe: overdraftRisk.alreadyNegative
+          ? "החשבון במינוס כרגע"
+          : "הזמין בפועל עלול להימתח עד סוף החודש",
+        meaningHe: overdraftRisk.messageHe,
+        moneyLineHe:
+          endBalanceProjected < 0
+            ? `פער צפוי ≈ ₪${Math.round(Math.abs(endBalanceProjected)).toLocaleString("he-IL")}`
+            : `זמין בפועל ≈ ₪${Math.round(availableInPractice).toLocaleString("he-IL")}`,
+        ctaHe: "לתנועות",
+        href: `/app/money?${monthQ}`,
+        severity: overdraftRisk.level,
+        score: overdraftRisk.level === "high" ? 95 : 75,
+      });
+    }
+
+    if (signalsReliable && leftover < 0) {
+      const gap = Math.round(Math.abs(leftover));
+      pushAttention(attention, {
+        id: "leftover-negative",
+        type: "leftover-negative",
+        conclusionHe: "החודש חרג מהמסגרת",
+        meaningHe:
+          "הקבועים והגמיש יחד עברו את ההכנסה לפי חלוקת התקציב — כדאי לבדוק איפה אפשר להאט.",
+        moneyLineHe: `נותר ≈ ₪${gap.toLocaleString("he-IL")} מתחת לאפס`,
+        ctaHe: "למאזן",
+        href: `/app/reports?${monthQ}`,
+        severity: gap >= 1000 ? "high" : "medium",
+        score: 88,
+      });
+    }
+
+    const hasOverdraftAttention = attention.some((a) => a.id === "overdraft");
+    if (
+      signalsReliable &&
+      !hasOverdraftAttention &&
+      availableInPractice < Math.max(500, facts.liquidity.reservedForObligations * 0.1)
+    ) {
+      pushAttention(attention, {
+        id: "available-tight",
+        type: "available-tight",
+        conclusionHe:
+          availableInPractice < 0
+            ? "אין מספיק זמין לתשלומים הקרובים"
+            : "נשאר מעט זמין בפועל",
+        meaningHe:
+          availableInPractice < 0
+            ? "מה שבחשבון לא מכסה את מה ששמור לתשלומים — כדאי לעדכן תנועות או לדחות הוצאה גמישה."
+            : "אחרי שמור לתשלומים נשאר מעט לשימוש חופשי — כדאי להיזהר מהוצאות גמישות גדולות.",
+        moneyLineHe: `זמין בפועל ≈ ₪${Math.round(availableInPractice).toLocaleString("he-IL")}`,
+        ctaHe: "לתנועות",
+        href: `/app/money?${monthQ}`,
+        severity: availableInPractice < 0 ? "high" : "medium",
+        score: availableInPractice < 0 ? 90 : 70,
+      });
+    }
+
+    const overFixed = facts.budget.fixed.items.filter((i) => i.status === "over");
+    if (signalsReliable && overFixed.length > 0) {
+      const top = [...overFixed].sort(
+        (a, b) => b.actual - b.expected - (a.actual - a.expected),
+      )[0];
+      const delta = Math.round(top.actual - top.expected);
+      pushAttention(attention, {
+        id: "fixed-over",
+        type: `fixed-over-${top.categoryKey}`,
+        conclusionHe: `שולם יותר מהצפוי ב«${top.titleHe}»`,
+        meaningHe:
+          "בקטגוריה הקבועה הזו יצא יותר ממה שתכננתם — לא בהכרח טעות, כדאי להבין למה.",
+        moneyLineHe: `≈ ₪${delta.toLocaleString("he-IL")} מעל הצפוי`,
+        ctaHe: "לתנועות",
+        href: `/app/money?${monthQ}&category=${encodeURIComponent(top.categoryKey)}`,
+        severity: delta >= 500 ? "high" : "medium",
+        score: 82,
+      });
+    }
+
+    const flexCap = facts.budget.flexible.cap;
+    const flexRemaining = facts.budget.flexible.remainingToCap;
+    if (
+      signalsReliable &&
+      flexCap != null &&
+      flexRemaining != null &&
+      flexRemaining < 0
+    ) {
+      const over = Math.round(Math.abs(flexRemaining));
+      pushAttention(attention, {
+        id: "flexible-over-cap",
+        type: "flexible-over-cap",
+        conclusionHe: "הגמיש עבר את התקרה שקבעתם",
+        meaningHe:
+          "הוצאות הגמיש החודש גבוהות מהתקרה — אפשר להאט או לעדכן את התקרה אם היא כבר לא מתאימה.",
+        moneyLineHe: `≈ ₪${over.toLocaleString("he-IL")} מעל התקרה · גמיש ₪${Math.round(flexibleSoFar).toLocaleString("he-IL")}`,
+        ctaHe: "לתנועות",
+        href: `/app/money?${monthQ}`,
+        severity: over >= 800 ? "high" : "medium",
+        score: 78,
+      });
+    }
+
+    if (
+      signalsReliable &&
+      expensePrev > 0 &&
+      expenseMtd > expensePrev * 1.15
+    ) {
+      const delta = Math.round(expenseMtd - expensePrev);
       const pct = Math.round(((expenseMtd - expensePrev) / expensePrev) * 100);
+      pushAttention(attention, {
+        id: "spend-up",
+        type: "spend-up",
+        conclusionHe: "ההוצאות גבוהות יותר מהחודש הקודם",
+        meaningHe: `עלייה של כ־${pct}% — זה לא בהכרח בעיה, כדאי להבין מה השתנה במאזן.`,
+        moneyLineHe: `הפרש ≈ ₪${delta.toLocaleString("he-IL")}`,
+        ctaHe: "למאזן",
+        href: `/app/reports?${monthQ}`,
+        severity: pct >= 30 ? "high" : "medium",
+        score: 80 + Math.min(pct, 40),
+      });
       patterns.push({
         id: "mom-spend-up",
-        titleHe: "עלייה בהוצאות לעומת החודש הקודם",
-        bodyHe: `ההוצאות גבוהות בכ־${pct}% (₪${Math.round(expenseMtd - expensePrev).toLocaleString("he-IL")} הפרש).`,
+        titleHe: "ההוצאות גבוהות יותר מהחודש הקודם",
+        bodyHe: `עלייה של כ־${pct}% (הפרש ₪${delta.toLocaleString("he-IL")}).`,
         severity: pct >= 30 ? "high" : "medium",
       });
       pushRec(recommendations, {
         id: "spend-up",
-        titleHe: "עצרו את עליית ההוצאות",
-        bodyHe: `ההוצאות עלו ב־${pct}% מול החודש הקודם. בדקו את 3 הקטגוריות הגדולות וקבעו תקרה לשבוע.`,
+        titleHe: "בדקו מה העלה את ההוצאות",
+        bodyHe: `ההוצאות עלו בכ־${pct}% מול החודש הקודם — במאזן רואים איפה.`,
         priority: "high",
         score: 80 + Math.min(pct, 40),
         evidence: [`expenseMtd=${expenseMtd}`, `expensePrev=${expensePrev}`],
-        annualImpactIls: Math.round((expenseMtd - expensePrev) * 12),
       });
     }
 
-    // Pattern: category drift vs previous month
-    for (const [key, amount] of Object.entries(byCategoryMonth)) {
-      const prev = byCategoryPrev[key] || 0;
-      if (prev >= 50 && amount > prev * 1.4 && amount - prev >= 100) {
-        patterns.push({
-          id: `cat-drift-${key}`,
-          titleHe: `חריגה בקטגוריה: ${categoryLabelHe(key)}`,
-          bodyHe: `החודש ₪${Math.round(amount).toLocaleString("he-IL")} לעומת ₪${Math.round(prev).toLocaleString("he-IL")} בחודש שעבר.`,
-          severity: amount > prev * 2 ? "high" : "medium",
-          categoryKey: key,
-          categoryLabelHe: categoryLabelHe(key),
-        });
-      }
-    }
-
-    // Pattern: recurring same description/amount (subscription-like)
-    for (const r of recurring.slice(0, 5)) {
-      patterns.push({
-        id: `recur-${r.categoryKey}-${Math.round(r.amount)}-${r.label.slice(0, 24)}`,
-        titleHe: `חיוב חוזר אפשרי: ${r.label}`,
-        bodyHe: `זוהו ${r.count} תנועות דומות בסביבות ₪${Math.round(r.amount).toLocaleString("he-IL")}.`,
-        severity: "low",
-        categoryKey: r.categoryKey,
-        categoryLabelHe: categoryLabelHe(r.categoryKey),
-      });
-    }
-
-    // Pattern: payday spike (expenses clustered in first 5 days after large income)
-    const salaryLike = monthTx
-      .filter((t) => t.direction === "INCOME" && Number(t.amount) >= 3000)
-      .sort((a, b) => Number(b.amount) - Number(a.amount))[0];
-    if (salaryLike) {
-      const payDay = new Date(salaryLike.bookedAt);
-      const windowEnd = new Date(payDay);
-      windowEnd.setDate(windowEnd.getDate() + 5);
-      const spike = monthTx
-        .filter(
-          (t) =>
-            t.direction === "EXPENSE" &&
-            new Date(t.bookedAt) >= payDay &&
-            new Date(t.bookedAt) <= windowEnd,
-        )
-        .reduce((s, t) => s + Number(t.amount), 0);
-      if (spike > Number(salaryLike.amount) * 0.35 && spike >= 800) {
-        patterns.push({
-          id: "payday-spike",
-          titleHe: "בזבוז אחרי משכורת",
-          bodyHe: `תוך 5 ימים מההכנסה הגדולה יצאו ₪${Math.round(spike).toLocaleString("he-IL")} — שיעור גבוה יחסית.`,
-          severity: "medium",
-        });
-        pushRec(recommendations, {
-          id: "payday-buffer",
-          titleHe: "הפרישו ליעד מיד אחרי המשכורת",
-          bodyHe:
-            "העבירו סכום קבוע ליעד/חיסכון ביום המשכורת לפני הוצאות שוטפות.",
-          priority: "medium",
-          score: 70,
-          evidence: [`spike=${spike}`, `income=${salaryLike.amount}`],
-        });
-      }
-    }
-
-    // Alerts
-    if (overdraftRisk.level !== "low") {
-      maybeAlert(alerts, dismissedTypes, {
-        id: "overdraft-forecast",
-        type: "overdraft-forecast",
-        titleHe: overdraftRisk.alreadyNegative
-          ? "עומס משיכת יתר"
-          : "סיכון משיכת יתר",
-        bodyHe: overdraftRisk.messageHe,
-        severity: overdraftRisk.level,
-        actionable: true,
-      });
-      pushRec(recommendations, {
-        id: "protect-cashflow",
-        titleHe: overdraftRisk.alreadyNegative
-          ? "ייצבו את המינוס השבוע"
-          : "הגנו על התזרים השבוע",
-        bodyHe: overdraftRisk.alreadyNegative
-          ? "עצרו הוצאות משתנות, בדקו עמלות והעדיפו סגירת חוב על פני רכישות."
-          : "דחו הוצאות לא דחופות ובדקו חיובים קבועים שניתן להקפיא זמנית.",
-        priority: overdraftRisk.level === "high" ? "high" : "medium",
-        score: overdraftRisk.level === "high" ? 95 : 75,
-        evidence: [
-          `balance=${availableBalance}`,
-          `projectedNet=${projectedNet}`,
-        ],
-      });
-    }
-
-    if (incomePrev > 0 && incomeMtd > 0 && incomeMtd < incomePrev * 0.85) {
-      maybeAlert(alerts, dismissedTypes, {
+    if (
+      signalsReliable &&
+      incomePrev > 0 &&
+      incomeMtd > 0 &&
+      incomeMtd < incomePrev * 0.85
+    ) {
+      const drop = Math.round(incomePrev - incomeMtd);
+      const pct = Math.round((1 - incomeMtd / incomePrev) * 100);
+      pushAttention(attention, {
         id: "income-drop",
         type: "income-drop",
-        titleHe: "ירידה בהכנסות",
-        bodyHe: `ההכנסה החודש נמוכה בכ־${Math.round((1 - incomeMtd / incomePrev) * 100)}% מהחודש הקודם.`,
+        conclusionHe: "ההכנסה נמוכה יותר מהחודש הקודם",
+        meaningHe: `ירידה של כ־${pct}% — אם זה חד־פעמי אפשר להתעלם; אם חוזר, כדאי להתאים קבועים וגמיש.`,
+        moneyLineHe: `≈ ₪${drop.toLocaleString("he-IL")} פחות בחודש`,
+        ctaHe: "לתנועות",
+        href: `/app/money?${monthQ}`,
         severity: "medium",
-        actionable: true,
+        score: 72,
       });
     }
 
@@ -686,51 +782,102 @@ export class IntelligenceService {
       const remaining = target - current;
       if (remaining <= 0) continue;
       const progress = current / Math.max(target, 1);
-      if (progress < 0.15 && expenseMtd > incomeMtd * 0.9 && incomeMtd > 0) {
-        maybeAlert(alerts, dismissedTypes, {
+      if (
+        signalsReliable &&
+        progress < 0.15 &&
+        leftover <= 0 &&
+        incomeMtd > 0
+      ) {
+        pushAttention(attention, {
           id: `goal-risk-${g.id}`,
           type: `goal-risk-${g.id}`,
-          titleHe: `יעד בסיכון: ${g.title}`,
-          bodyHe: "קצב החיסכון נמוך ביחס להוצאות החודש.",
+          conclusionHe: `ליעד «${g.title}» כמעט אין מקום החודש`,
+          meaningHe:
+            "אין נותר להקצות ליעד אחרי הקבועים והגמיש — אפשר לחכות לחודש הבא או לצמצם גמיש.",
+          moneyLineHe: `נותר בתקציב ≈ ₪${Math.round(leftover).toLocaleString("he-IL")}`,
+          ctaHe: "ליעדים",
+          href: `/app/goals?${monthQ}`,
           severity: "medium",
-          actionable: true,
+          score: 60,
         });
       }
       pushRec(recommendations, {
         id: `goal-${g.id}`,
         titleHe: `התקדמות ליעד: ${g.title}`,
-        bodyHe: `נותרו ₪${Math.round(remaining).toLocaleString("he-IL")}. הצעד השבוע: להפריש סכום קבוע קטן.`,
+        bodyHe: `נותרו ₪${Math.round(remaining).toLocaleString("he-IL")}.`,
         priority: "medium",
         score: 55 + Math.round((1 - progress) * 20),
         evidence: [`remaining=${remaining}`],
       });
     }
 
-    // Cellular opportunity heuristic (estimate, labeled)
-    const cellular = byCategoryMonth.cellular || 0;
-    if (cellular >= 90) {
-      pushRec(recommendations, {
-        id: "cellular-market",
-        titleHe: "בדיקת חבילת סלולר",
-        bodyHe: `אתם מדווחים על ~₪${Math.round(cellular).toLocaleString("he-IL")}/חודש לסלולר. בשוק הישראלי יש חבילות סביב ₪30–60 — השוו (הערכה, לא הצעת ספק מאומתת).`,
-        priority: "medium",
-        score: 65,
-        evidence: [`cellular=${cellular}`, "market=estimate"],
-        annualImpactIls: Math.max(0, Math.round((cellular - 50) * 12)),
+    // Soft patterns (API compat) — not duplicated into attention when unreliable
+    if (signalsReliable) {
+      const salaryLike = monthTx
+        .filter((t) => t.direction === "INCOME" && Number(t.amount) >= 3000)
+        .sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+      if (salaryLike) {
+        const payDay = new Date(salaryLike.bookedAt);
+        const windowEnd = new Date(payDay);
+        windowEnd.setDate(windowEnd.getDate() + 5);
+        const spike = monthTx
+          .filter(
+            (t) =>
+              countsAsCashSpend(t) &&
+              new Date(t.bookedAt) >= payDay &&
+              new Date(t.bookedAt) <= windowEnd,
+          )
+          .reduce((s, t) => s + Number(t.amount), 0);
+        if (spike > Number(salaryLike.amount) * 0.35 && spike >= 800) {
+          patterns.push({
+            id: "payday-spike",
+            titleHe: "הוצאות גבוהות מיד אחרי הכנסה גדולה",
+            bodyHe: `תוך 5 ימים מההכנסה הגדולה יצאו ₪${Math.round(spike).toLocaleString("he-IL")} — כדאי לבדוק אם זה חוזר.`,
+            severity: "medium",
+          });
+        }
+      }
+    }
+
+    if (
+      signalsReliable &&
+      leftover > 200 &&
+      facts.checkingBalanceNow >= 0 &&
+      !(await this.prisma.goal.findFirst({
+        where: { userId, kind: "EMERGENCY" },
+        select: { id: true },
+      }))
+    ) {
+      pushAttention(attention, {
+        id: "cushion-missing",
+        type: "cushion-missing",
+        conclusionHe: "כדאי להתחיל רזרבה להפתעות",
+        meaningHe:
+          "יש נותר החודש — סכום קטן שמפרידים מהשוטף עוזר לא לחזור למינוס כשמשהו נשבר.",
+        moneyLineHe: `נותר ≈ ₪${Math.round(leftover).toLocaleString("he-IL")}`,
+        ctaHe: "ליעדים",
+        href: `/app/goals?${monthQ}&reserve=1`,
+        severity: "low",
+        score: 45,
       });
     }
 
-    if (recommendations.length === 0) {
-      pushRec(recommendations, {
+    if (attention.length === 0 && !signalsReliable && dataGaps.length === 0) {
+      pushAttention(attention, {
         id: "add-data",
-        titleHe: "העשירו את תמונת המצב",
-        bodyHe:
-          "הוסיפו עוד תנועות או העלו דף חשבון — כך הדפוסים וההמלצות יהיו מדויקים יותר.",
-        priority: "low",
+        type: "add-data",
+        conclusionHe: "כדי לקבל תמונה ברורה יותר",
+        meaningHe:
+          "הוסיפו כמה תנועות או ייבאו דף חשבון — רק אז נוכל להציע מסקנות מדויקות.",
+        ctaHe: "לייבוא",
+        href: `/app/money?tab=import&${monthQ}`,
+        severity: "low",
         score: 20,
-        evidence: ["sparse-data"],
       });
     }
+
+    attention.sort((a, b) => b.score - a.score);
+    const visibleAttention = attention.filter((a) => !silencedTypes.has(a.type));
 
     recommendations.sort((a, b) => b.score - a.score);
 
@@ -749,6 +896,7 @@ export class IntelligenceService {
           0,
           35 +
             (netMtd >= 0 ? 20 : -12) +
+            (leftover >= 0 ? 8 : -8) +
             (goals.length > 0 ? 12 : 0) +
             (facts.meta.hasCheckingAccount ? 12 : 0) +
             (overdraftRisk.level === "low"
@@ -756,35 +904,92 @@ export class IntelligenceService {
               : overdraftRisk.level === "medium"
                 ? 0
                 : -18) +
-            (patterns.some((p) => p.severity === "high") ? -8 : 0) +
+            (visibleAttention.some((p) => p.severity === "high") ? -8 : 0) +
             Math.min(10, Math.floor(recentTx.length / 3)),
         ),
       ),
     );
 
-    // Persist non-dismissed alerts snapshot (upsert by type for current open ones)
-    for (const alert of alerts) {
+    // Persist open attention as alerts (for snooze/dismiss by type)
+    for (const item of visibleAttention.slice(0, 8)) {
       const existing = await this.prisma.alert.findFirst({
-        where: { userId, type: alert.type, dismissed: false },
+        where: {
+          userId,
+          type: item.type,
+          dismissed: false,
+        },
+        orderBy: { createdAt: "desc" },
       });
+      if (
+        existing &&
+        existing.snoozedUntil &&
+        existing.snoozedUntil > now
+      ) {
+        continue;
+      }
       if (!existing) {
-        await this.prisma.alert.create({
+        const created = await this.prisma.alert.create({
           data: {
             userId,
-            type: alert.type,
-            titleHe: alert.titleHe,
-            bodyHe: alert.bodyHe,
-            severity: alert.severity,
+            type: item.type,
+            titleHe: item.conclusionHe,
+            bodyHe: item.meaningHe,
+            severity: item.severity,
+          },
+        });
+        item.alertId = created.id;
+      } else {
+        item.alertId = existing.id;
+        await this.prisma.alert.update({
+          where: { id: existing.id },
+          data: {
+            titleHe: item.conclusionHe,
+            bodyHe: item.meaningHe,
+            severity: item.severity,
           },
         });
       }
     }
 
+    // Drop stale overdraft alerts when current projection is calm.
+    if (overdraftRisk.level === "low" && !overdraftRisk.alreadyNegative) {
+      await this.prisma.alert.updateMany({
+        where: {
+          userId,
+          type: "overdraft-forecast",
+          dismissed: false,
+        },
+        data: { dismissed: true },
+      });
+    }
+
     const openAlerts = await this.prisma.alert.findMany({
-      where: { userId, dismissed: false },
+      where: {
+        userId,
+        dismissed: false,
+        OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
+      },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
+
+    const attentionOut = visibleAttention.slice(0, 2).map((a) => ({
+      id: a.id,
+      type: a.type,
+      conclusionHe: a.conclusionHe,
+      meaningHe: a.meaningHe,
+      /** Aliases for older clients / alert list */
+      titleHe: a.conclusionHe,
+      bodyHe: a.meaningHe,
+      moneyLineHe: a.moneyLineHe,
+      ctaHe: a.ctaHe,
+      href: a.href,
+      severity: a.severity,
+      score: a.score,
+      alertId:
+        a.alertId ||
+        openAlerts.find((x) => x.type === a.type)?.id,
+    }));
 
     return {
       period,
@@ -801,6 +1006,7 @@ export class IntelligenceService {
       overdraftRisk,
       dataGaps,
       cashFlowForecast,
+      attention: attentionOut,
       patterns,
       alerts: openAlerts.map((a) => ({
         id: a.id,
@@ -837,9 +1043,23 @@ export class IntelligenceService {
     if (!row) return { ok: false };
     await this.prisma.alert.update({
       where: { id: alertId },
-      data: { dismissed: true },
+      data: { dismissed: true, snoozedUntil: null },
     });
     return { ok: true };
+  }
+
+  async snoozeAlert(userId: string, alertId: string, days = 7) {
+    const row = await this.prisma.alert.findFirst({
+      where: { id: alertId, userId },
+    });
+    if (!row) return { ok: false };
+    const until = new Date();
+    until.setDate(until.getDate() + Math.min(30, Math.max(1, days)));
+    await this.prisma.alert.update({
+      where: { id: alertId },
+      data: { snoozedUntil: until, dismissed: false },
+    });
+    return { ok: true, snoozedUntil: until };
   }
 
   /** Prefer current calendar month; if empty, use the latest month that has txs. */
@@ -936,34 +1156,66 @@ function pctChange(prev: number, curr: number) {
 
 function buildNarrative(
   mom: {
-    income: { deltaPct: number };
-    expense: { deltaPct: number };
+    income: { deltaPct: number; previous?: number };
+    expense: { deltaPct: number; previous?: number };
     net: { current: number; deltaPct: number };
   },
   categories: Array<{ labelHe: string; amount: number }>,
   period?: { labelHe: string; isCurrentMonth: boolean },
 ) {
   const parts: string[] = [];
-  if (period && !period.isCurrentMonth) {
-    parts.push(`${period.labelHe}.`);
+  const expensePrev = mom.expense.previous ?? 0;
+  const incomePrev = mom.income.previous ?? 0;
+  const canCompareExpense = expensePrev > 0;
+  const canCompareIncome = incomePrev > 0;
+
+  // מסקנה קודם
+  if (mom.net.current < 0) {
+    parts.push(
+      "החודש נגמר במינוס תזרימי — כדאי לייצב לפני יעדים חדשים.",
+    );
+  } else if (canCompareExpense && mom.expense.deltaPct >= 15) {
+    parts.push(
+      `ההוצאות עלו משמעותית מול החודש הקודם (+${mom.expense.deltaPct}%).`,
+    );
+  } else if (canCompareExpense && mom.expense.deltaPct <= -10) {
+    parts.push(
+      `ההוצאות ירדו בכ־${Math.abs(mom.expense.deltaPct)}% — מגמה חיובית.`,
+    );
+  } else if (canCompareIncome && mom.income.deltaPct <= -10) {
+    parts.push(
+      `ההכנסות ירדו בכ־${Math.abs(mom.income.deltaPct)}% מול החודש הקודם.`,
+    );
+  } else if (mom.net.current > 0) {
+    parts.push("החודש נשאר חיובי אחרי הוצאות וליעדים.");
   }
-  if (mom.expense.deltaPct >= 15) {
+
+  // פרטים תומכים (בלי לחזור על המסקנה)
+  if (mom.net.current < 0 && canCompareExpense && mom.expense.deltaPct >= 15) {
     parts.push(`ההוצאות עלו ב־${mom.expense.deltaPct}% מול החודש הקודם.`);
-  } else if (mom.expense.deltaPct <= -10) {
-    parts.push(`ההוצאות ירדו ב־${Math.abs(mom.expense.deltaPct)}% — מגמה חיובית.`);
   }
-  if (mom.income.deltaPct <= -10) {
+  if (
+    canCompareIncome &&
+    mom.income.deltaPct <= -10 &&
+    !parts.some((p) => p.includes("הכנסות ירדו"))
+  ) {
     parts.push(`ההכנסות ירדו ב־${Math.abs(mom.income.deltaPct)}%.`);
   }
-  if (categories[0]) {
+  if (categories[0] && categories[0].amount > 0) {
     parts.push(
-      `הקטגוריה הגדולה בתקופה: ${categories[0].labelHe} (₪${Math.round(categories[0].amount).toLocaleString("he-IL")}).`,
+      `הקטגוריה הגדולה: ${categories[0].labelHe} (₪${Math.round(categories[0].amount).toLocaleString("he-IL")}).`,
     );
   }
-  if (mom.net.current < 0) {
-    parts.push("התזרים שלילי — עדיפות לייצוב לפני יעדים חדשים.");
+
+  if (parts.length === 0) {
+    return "עדיין אין מספיק היסטוריה למסקנה חודשית ברורה.";
   }
-  return parts.join(" ") || "עדיין אין מספיק היסטוריה לנרטיב חודשי עשיר.";
+
+  if (period && !period.isCurrentMonth) {
+    parts.splice(1, 0, `${period.labelHe}.`);
+  }
+
+  return parts.join(" ");
 }
 
 function detectRecurring(
@@ -1001,14 +1253,9 @@ function pushRec(list: RankedRecommendation[], rec: RankedRecommendation) {
   list.push(rec);
 }
 
-function maybeAlert(
-  list: AlertItem[],
-  dismissed: Set<string>,
-  alert: AlertItem,
-) {
-  if (dismissed.has(alert.type)) return;
-  if (list.some((a) => a.type === alert.type)) return;
-  list.push(alert);
+function pushAttention(list: AttentionItem[], item: AttentionItem) {
+  if (list.some((r) => r.id === item.id || r.type === item.type)) return;
+  list.push(item);
 }
 
 function csvEscape(value: string) {

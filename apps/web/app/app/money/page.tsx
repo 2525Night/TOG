@@ -24,7 +24,11 @@ import {
   currentMonthKey,
 } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
+import { Pulse } from "@/components/Pulse";
+import { FeelRow } from "@/components/FeelRow";
+import { WinStrip } from "@/components/WinStrip";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { ConfirmPanel } from "@/components/ConfirmPanel";
 import Link from "next/link";
 
 type Account = { id: string; name: string; kind: string; currentBalance: string };
@@ -37,7 +41,21 @@ type Tx = {
   note?: string | null;
   merchantNorm?: string | null;
   bookedAt: string;
+  economicRole?: string;
+  loanId?: string | null;
+  creditCardId?: string | null;
+  installmentPlanId?: string | null;
+  loan?: { id: string; name: string; provider: string | null } | null;
+  creditCard?: {
+    id: string;
+    name: string;
+    lastFour: string | null;
+    provider: string | null;
+  } | null;
 };
+
+type LoanOpt = { id: string; name: string };
+type CardOpt = { id: string; name: string; lastFour: string | null };
 
 type UserCat = {
   id: string;
@@ -54,6 +72,10 @@ type FixedBudgetItem = {
   expected: number;
   actual: number;
   status: "paid" | "partial" | "pending" | "over";
+  payVia?: "ACCOUNT" | "CREDIT_CARD";
+  creditCardId?: string | null;
+  startMonth?: string | null;
+  endMonth?: string | null;
 };
 
 type BudgetSnap = {
@@ -87,12 +109,23 @@ type MonthFacts = {
   };
 };
 
+type EconomicRoleOpt =
+  | "STANDARD"
+  | "CARD_PURCHASE"
+  | "CARD_SETTLEMENT"
+  | "LOAN_PAYMENT";
+
 type AddDraft = {
   mode: "expense" | "income";
   amount: string;
   description: string;
   categoryKey: string;
   bookedAt: string;
+  economicRole: EconomicRoleOpt;
+  loanId: string;
+  creditCardId: string;
+  /** "1" = one-time; >=2 = installments (CARD_PURCHASE only) */
+  installmentCount: string;
 };
 
 type CommitmentOffer = {
@@ -195,6 +228,10 @@ function emptyAddDraft(mode: "expense" | "income", month: string): AddDraft {
     description: "",
     categoryKey: cats[0]?.key || (mode === "income" ? "salary" : "food"),
     bookedAt: defaultBookedDate(month),
+    economicRole: "STANDARD",
+    loanId: "",
+    creditCardId: "",
+    installmentCount: "1",
   };
 }
 
@@ -227,6 +264,11 @@ function dirHe(d: string) {
 
 const TX_GROUP_BY_DAY_KEY = "moneytail.txGroupByDay";
 
+type PendingConfirm =
+  | { kind: "delete-tx"; tx: Tx }
+  | { kind: "remove-commitment"; id: string; titleHe: string }
+  | { kind: "undo-import"; docId: string; latestConfirmed: boolean };
+
 function statusHe(status: string) {
   if (status === "CONFIRMED") return "אושר";
   if (status === "EXTRACTED") return "חולץ";
@@ -239,12 +281,18 @@ function MoneyInner() {
   const router = useRouter();
   const search = useSearchParams();
   const month = useSelectedMonth();
-  const tab = search.get("tab") === "import" ? "import" : "txs";
+  const tabRaw = search.get("tab");
+  const tab =
+    tabRaw === "import" ? "import" : tabRaw === "fixed" ? "fixed" : "txs";
   const categoryFilter = search.get("category") || "";
+  const loanFilter = search.get("loanId") || "";
+  const cardFilter = search.get("creditCardId") || "";
   const dirFromUrl = search.get("dir");
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [txs, setTxs] = useState<Tx[]>([]);
+  const [loanOpts, setLoanOpts] = useState<LoanOpt[]>([]);
+  const [cardOpts, setCardOpts] = useState<CardOpt[]>([]);
   const [docs, setDocs] = useState<DocListItem[]>([]);
   const [budget, setBudget] = useState<BudgetSnap | null>(null);
   const [monthFacts, setMonthFacts] = useState<MonthFacts | null>(null);
@@ -252,6 +300,8 @@ function MoneyInner() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fixedOpen, setFixedOpen] = useState(false);
+  const [showMonthFlow, setShowMonthFlow] = useState(false);
 
   const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
   const [commitmentOffer, setCommitmentOffer] =
@@ -274,6 +324,9 @@ function MoneyInner() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [groupByDay, setGroupByDay] = useState(false);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(
+    null,
+  );
 
   useEffect(() => {
     try {
@@ -317,19 +370,31 @@ function MoneyInner() {
   );
 
   const pendingCommitments = useMemo(() => {
-    if (!budget?.fixed?.items || addDraft?.mode !== "expense") return [];
+    if (!budget?.fixed?.items) return [];
     return budget.fixed.items.filter(
       (i) =>
         i.commitmentId &&
         (i.status === "pending" || i.status === "partial") &&
         i.expected > 0,
     );
-  }, [budget, addDraft?.mode]);
+  }, [budget]);
 
   const expenseCommitments = useMemo(() => {
-    if (!budget?.fixed?.items || addDraft?.mode !== "expense") return [];
+    if (!budget?.fixed?.items) return [];
     return budget.fixed.items.filter((i) => i.commitmentId && i.expected > 0);
-  }, [budget, addDraft?.mode]);
+  }, [budget]);
+
+  const accountCommitments = useMemo(
+    () =>
+      expenseCommitments.filter((i) => i.payVia !== "CREDIT_CARD"),
+    [expenseCommitments],
+  );
+
+  const cardCommitments = useMemo(
+    () =>
+      expenseCommitments.filter((i) => i.payVia === "CREDIT_CARD"),
+    [expenseCommitments],
+  );
 
   const checkingAccount = useMemo(() => {
     const banks = accounts.filter((a) => a.kind === "BANK");
@@ -353,6 +418,8 @@ function MoneyInner() {
     return monthTxs.filter((t) => {
       if (dirFilter !== "ALL" && t.direction !== dirFilter) return false;
       if (categoryFilter && t.categoryKey !== categoryFilter) return false;
+      if (loanFilter && t.loanId !== loanFilter) return false;
+      if (cardFilter && t.creditCardId !== cardFilter) return false;
       if (needle) {
         const hay =
           `${t.description || ""} ${labelCat(t.categoryKey)}`.toLowerCase();
@@ -360,7 +427,15 @@ function MoneyInner() {
       }
       return true;
     });
-  }, [monthTxs, dirFilter, categoryFilter, q, catLabels]);
+  }, [
+    monthTxs,
+    dirFilter,
+    categoryFilter,
+    loanFilter,
+    cardFilter,
+    q,
+    catLabels,
+  ]);
 
   const dayGroups = useMemo(() => {
     const map = new Map<string, Tx[]>();
@@ -430,18 +505,29 @@ function MoneyInner() {
 
   async function refresh(opts?: { docs?: boolean }) {
     const needDocs = opts?.docs ?? tab === "import";
-    const [a, t, facts, cats, d] = await Promise.all([
+    const txQs = new URLSearchParams({ month });
+    if (loanFilter) txQs.set("loanId", loanFilter);
+    if (cardFilter) txQs.set("creditCardId", cardFilter);
+    const [a, t, facts, cats, d, loansRes, cardsRes] = await Promise.all([
       api<Account[]>("/accounts"),
-      api<Tx[]>(`/transactions?month=${month}`),
+      api<Tx[]>(`/transactions?${txQs.toString()}`),
       api<MonthFacts>(`/month-facts?month=${month}`).catch(() => null),
       api<UserCat[]>("/categories").catch(() => [] as UserCat[]),
       needDocs
         ? api<DocListItem[]>("/documents")
         : Promise.resolve(null),
+      api<{ loans: LoanOpt[] }>(`/loans?month=${month}`).catch(() => ({
+        loans: [] as LoanOpt[],
+      })),
+      api<{ items: CardOpt[] }>(`/credit-cards?month=${month}`).catch(
+        () => ({ items: [] as CardOpt[] }),
+      ),
     ]);
     setAccounts(a);
     setTxs(t);
     setUserCats(cats);
+    setLoanOpts(loansRes.loans || []);
+    setCardOpts(cardsRes.items || []);
     setMonthFacts(facts);
     if (facts) {
       setBudget({
@@ -462,7 +548,7 @@ function MoneyInner() {
       setError(e instanceof Error ? e.message : "שגיאה"),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, tab]);
+  }, [month, tab, loanFilter, cardFilter]);
 
   function setDirFilterAndUrl(
     next: "ALL" | "INCOME" | "EXPENSE" | "TRANSFER",
@@ -474,11 +560,14 @@ function MoneyInner() {
     router.replace(`/app/money?${params.toString()}`);
   }
 
-  function setTab(next: "txs" | "import") {
+  function setTab(next: "txs" | "import" | "fixed") {
     const params = new URLSearchParams(search.toString());
     if (next === "import") params.set("tab", "import");
+    else if (next === "fixed") params.set("tab", "fixed");
     else params.delete("tab");
     router.replace(`/app/money?${params.toString()}`);
+    if (next === "fixed") setFixedOpen(true);
+    else if (next === "txs") setFixedOpen(false);
   }
 
   function openAddDraft(mode: "expense" | "income") {
@@ -492,10 +581,25 @@ function MoneyInner() {
   }
 
   function fillFromCommitment(item: FixedBudgetItem) {
-    if (!addDraft) return;
+    const open =
+      item.status === "pending" || item.status === "partial";
+    if (!open) {
+      setError(
+        `«${item.titleHe}» כבר נרשמה בחודש ${month} — אפשר למחוק את התנועה ואז לרשום מחדש`,
+      );
+      return;
+    }
+    setFixedOpen(true);
     const remaining = Math.max(0, item.expected - item.actual);
+    const viaCard =
+      item.payVia === "CREDIT_CARD" && Boolean(item.creditCardId);
+    const draft =
+      addDraft?.mode === "expense"
+        ? addDraft
+        : emptyAddDraft("expense", month);
+    setError(null);
     setAddDraft({
-      ...addDraft,
+      ...draft,
       amount: String(remaining || item.expected),
       description: item.titleHe,
       categoryKey: ensureCategoryForDirection(
@@ -503,7 +607,24 @@ function MoneyInner() {
         item.categoryKey,
         userCats,
       ),
+      economicRole: viaCard ? "CARD_PURCHASE" : "STANDARD",
+      creditCardId: viaCard ? item.creditCardId || "" : "",
+      installmentCount: "1",
+      loanId: "",
     });
+  }
+
+  function cardLabel(cardId: string | null | undefined) {
+    if (!cardId) return "כרטיס";
+    const c = cardOpts.find((x) => x.id === cardId);
+    if (!c) return "כרטיס";
+    return c.lastFour ? `${c.name} ·••• ${c.lastFour}` : c.name;
+  }
+
+  function formatStartMonthHe(start: string | null | undefined) {
+    if (!start || !/^\d{4}-\d{2}$/.test(start)) return null;
+    const [y, m] = start.split("-");
+    return `${m}/${y}`;
   }
 
   async function createUserCategory(labelHe: string, asFixed: boolean) {
@@ -534,16 +655,82 @@ function MoneyInner() {
     setBusy(true);
     try {
       const direction = addDraft.mode === "income" ? "INCOME" : "EXPENSE";
-      await api("/transactions", {
-        method: "POST",
-        body: JSON.stringify({
-          direction,
-          amount: amt,
-          categoryKey: addDraft.categoryKey,
-          description: addDraft.description || undefined,
-          bookedAt: `${addDraft.bookedAt}T12:00:00.000Z`,
-        }),
-      });
+      const role =
+        direction === "EXPENSE" ? addDraft.economicRole : "STANDARD";
+
+      if (role === "CARD_PURCHASE") {
+        if (!addDraft.creditCardId) {
+          setError("נא לבחור כרטיס אשראי");
+          setBusy(false);
+          return;
+        }
+        const installmentCount = Math.max(
+          1,
+          Math.floor(Number(addDraft.installmentCount) || 1),
+        );
+        const chargeRes = await api<{
+          mode: "ONE_TIME" | "INSTALLMENTS";
+          thisMonthCharge: number;
+          futureCommitment: number;
+          installmentCount: number;
+        }>(`/credit-cards/${addDraft.creditCardId}/charges`, {
+          method: "POST",
+          body: JSON.stringify({
+            description:
+              addDraft.description.trim() || labelCat(addDraft.categoryKey),
+            amount: amt,
+            categoryKey: addDraft.categoryKey,
+            bookedAt: `${addDraft.bookedAt}T12:00:00.000Z`,
+            installmentCount,
+          }),
+        });
+        await refresh();
+        setAddDraft(null);
+        setCommitmentOffer(null);
+        if (chargeRes.mode === "INSTALLMENTS") {
+          setMsg(
+            `נרשם ${formatIls(chargeRes.thisMonthCharge)} בהוצאות החודש` +
+              (chargeRes.futureCommitment > 0
+                ? ` · ${formatIls(chargeRes.futureCommitment)} נשמרו כתשלומים בכרטיס`
+                : ""),
+          );
+        } else {
+          setMsg(
+            `נרשמה קנייה בכרטיס · ${formatIls(chargeRes.thisMonthCharge)}`,
+          );
+        }
+        return;
+      } else {
+        if (role === "CARD_SETTLEMENT" && !addDraft.creditCardId) {
+          setError("נא לבחור כרטיס לסילוק");
+          setBusy(false);
+          return;
+        }
+        if (role === "LOAN_PAYMENT" && !addDraft.loanId) {
+          setError("נא לבחור הלוואה");
+          setBusy(false);
+          return;
+        }
+        await api("/transactions", {
+          method: "POST",
+          body: JSON.stringify({
+            direction,
+            amount: amt,
+            categoryKey: addDraft.categoryKey,
+            description: addDraft.description || undefined,
+            bookedAt: `${addDraft.bookedAt}T12:00:00.000Z`,
+            economicRole: role,
+            loanId:
+              role === "LOAN_PAYMENT" && addDraft.loanId
+                ? addDraft.loanId
+                : undefined,
+            creditCardId:
+              role === "CARD_SETTLEMENT" && addDraft.creditCardId
+                ? addDraft.creditCardId
+                : undefined,
+          }),
+        });
+      }
 
       const nature = resolveNature(addDraft.categoryKey);
       const hasCommitment = (budget?.fixed?.items || []).some(
@@ -553,6 +740,7 @@ function MoneyInner() {
       );
       const offer =
         direction === "EXPENSE" &&
+        role === "STANDARD" &&
         (nature === "fixed" || nature === "periodic") &&
         !hasCommitment
           ? {
@@ -594,7 +782,6 @@ function MoneyInner() {
   }
 
   async function recordAllPendingCommitments() {
-    if (!addDraft || addDraft.mode !== "expense") return;
     const list = pendingCommitments;
     if (!list.length) {
       setError("אין הוצאות קבועות פתוחות לחודש זה");
@@ -603,34 +790,91 @@ function MoneyInner() {
     setBusy(true);
     setError(null);
     try {
-      const bookedAt = `${addDraft.bookedAt}T12:00:00.000Z`;
+      const day =
+        addDraft?.mode === "expense"
+          ? addDraft.bookedAt
+          : defaultBookedDate(month);
+      const bookedAt = `${day}T12:00:00.000Z`;
+      let cardCount = 0;
+      let accountCount = 0;
       for (const item of list) {
         const amt =
           Math.max(0, item.expected - item.actual) || item.expected;
         if (amt <= 0) continue;
-        await api("/transactions", {
-          method: "POST",
-          body: JSON.stringify({
-            direction: "EXPENSE",
-            amount: amt,
-            categoryKey: item.categoryKey,
-            description: item.titleHe,
-            bookedAt,
-          }),
+        if (item.payVia === "CREDIT_CARD" && item.creditCardId) {
+          await api(`/credit-cards/${item.creditCardId}/charges`, {
+            method: "POST",
+            body: JSON.stringify({
+              description: item.titleHe,
+              amount: amt,
+              categoryKey: item.categoryKey,
+              bookedAt,
+              installmentCount: 1,
+            }),
+          });
+          cardCount += 1;
+        } else {
+          await api("/transactions", {
+            method: "POST",
+            body: JSON.stringify({
+              direction: "EXPENSE",
+              amount: amt,
+              categoryKey: item.categoryKey,
+              description: item.titleHe,
+              bookedAt,
+            }),
+          });
+          accountCount += 1;
+        }
+      }
+      const parts: string[] = [];
+      if (accountCount) parts.push(`${accountCount} מהחשבון`);
+      if (cardCount) parts.push(`${cardCount} באשראי`);
+      setMsg(
+        parts.length
+          ? `נרשמו הוצאות קבועות: ${parts.join(" · ")}`
+          : `נרשמו ${list.length} הוצאות קבועות יחד`,
+      );
+      await refresh();
+      if (addDraft?.mode === "expense") {
+        setAddDraft({
+          ...emptyAddDraft("expense", month),
+          bookedAt: addDraft.bookedAt,
         });
       }
-      setMsg(`נרשמו ${list.length} הוצאות קבועות יחד`);
-      await refresh();
-      setAddDraft({
-        ...emptyAddDraft("expense", month),
-        bookedAt: addDraft.bookedAt,
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
       setBusy(false);
     }
   }
+
+  async function chargeDueCardInstallments() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{
+        chargedCount: number;
+        chargedTotal: number;
+      }>(
+        `/credit-cards/installments/charge-due?month=${encodeURIComponent(month)}`,
+        { method: "POST" },
+      );
+      await refresh();
+      if (res.chargedCount === 0) {
+        setMsg("אין תשלומי אשראי לרישום לחודש זה");
+      } else {
+        setMsg(
+          `נרשמו ${res.chargedCount} תשלומי אשראי · ${formatIls(res.chargedTotal)}`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function acceptCommitmentOffer() {
     if (!commitmentOffer) return;
     setBusy(true);
@@ -643,10 +887,11 @@ function MoneyInner() {
           expectedAmount: commitmentOffer.amount,
           nature: "FIXED",
           cadence: "MONTHLY",
+          startMonth: month,
         }),
       });
       setCommitmentOffer(null);
-      setMsg("נשמרה התחייבות קבועה לחודשים הבאים");
+      setMsg(`נשמרה התחייבות קבועה מ־${month}`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -666,6 +911,11 @@ function MoneyInner() {
       setError("בחרו קטגוריה");
       return;
     }
+    const viaCard = addDraft.economicRole === "CARD_PURCHASE";
+    if (viaCard && !addDraft.creditCardId) {
+      setError("נא לבחור כרטיס להוראת קבע באשראי");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -677,9 +927,16 @@ function MoneyInner() {
           expectedAmount: amt,
           nature: "FIXED",
           cadence: "MONTHLY",
+          payVia: viaCard ? "CREDIT_CARD" : "ACCOUNT",
+          creditCardId: viaCard ? addDraft.creditCardId : undefined,
+          startMonth: month,
         }),
       });
-      setMsg("נוספה הוצאה קבועה — אפשר להוסיף עוד בטיוטה");
+      setMsg(
+        viaCard
+          ? `נוספה הוראת קבע באשראי מ־${month} — תופיע בצ׳יפים כמו שכירות, ותירשם כקנייה בכרטיס בכל חודש`
+          : `נוספה הוצאה קבועה מ־${month} — תופיע בצ׳יפים לחודשים הרלוונטיים`,
+      );
       setAddDraft((d) =>
         d
           ? {
@@ -699,9 +956,13 @@ function MoneyInner() {
   }
 
   async function removeCommitment(id: string, titleHe: string) {
-    if (!window.confirm(`להסיר את ההוצאה הקבועה «${titleHe}»?`)) return;
+    setPendingConfirm({ kind: "remove-commitment", id, titleHe });
+  }
+
+  async function executeRemoveCommitment(id: string) {
     setBusy(true);
     setError(null);
+    setPendingConfirm(null);
     try {
       await api(`/budget/commitments/${id}/deactivate`, { method: "POST" });
       setMsg("ההוצאה הקבועה הוסרה");
@@ -947,9 +1208,13 @@ function MoneyInner() {
   }
 
   async function deleteTx(t: Tx) {
-    if (!window.confirm("למחוק את התנועה הזו?")) return;
+    setPendingConfirm({ kind: "delete-tx", tx: t });
+  }
+
+  async function executeDeleteTx(t: Tx) {
     setBusy(true);
     setError(null);
+    setPendingConfirm(null);
     try {
       await api(`/transactions/${t.id}`, { method: "DELETE" });
       await refresh();
@@ -1070,6 +1335,34 @@ function MoneyInner() {
           <>
             <span className="tx-dense-desc" title={t.description || ""}>
               {t.description || "—"}
+              {t.loan && (
+                <>
+                  <br />
+                  <Link
+                    className="muted"
+                    href={appHref(`/app/debts/loans/${t.loan.id}`, month)}
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    הלוואה: {t.loan.name}
+                  </Link>
+                </>
+              )}
+              {t.creditCard && (
+                <>
+                  <br />
+                  <Link
+                    className="muted"
+                    href={appHref(`/app/debts/cards/${t.creditCard.id}`, month)}
+                    style={{ fontSize: "0.78rem" }}
+                  >
+                    כרטיס
+                    {t.creditCard.lastFour
+                      ? ` ·••• ${t.creditCard.lastFour}`
+                      : ` · ${t.creditCard.name}`}
+                    {t.economicRole === "CARD_SETTLEMENT" ? " · סילוק" : ""}
+                  </Link>
+                </>
+              )}
             </span>
             <label className={`tx-dense-note${t.note ? " has-note" : ""}`}>
               <span className="sr-only">הערה</span>
@@ -1174,8 +1467,9 @@ function MoneyInner() {
   return (
     <div className="grid money-hub" style={{ gap: "0.85rem" }}>
       <PageHeader
-        title="תנועות"
-        subtitle="תזרים חודשי · ייבוא אופציונלי"
+        kicker="תנועות"
+        title="הכסף בתנועה"
+        subtitle="מה נכנס ומה יצא החודש"
         aside={
           <div className="money-balance-hero">
             <p className="money-balance-label">יתרה בעו״ש</p>
@@ -1195,6 +1489,79 @@ function MoneyInner() {
             </div>
           </div>
         }
+      />
+
+      <div className="mt-grid-3 rise-2">
+        <article className="mt-surface stat">
+          <h3>הכנסות החודש</h3>
+          <div className="val" style={{ color: "var(--mt-good)" }}>
+            {formatIls(monthIncome)}
+          </div>
+          <p className="note">מה שנכנס · הבסיס שנותן מרחב</p>
+        </article>
+        <article className="mt-surface stat">
+          <h3>הוצאות החודש</h3>
+          <div className="val">{formatIls(monthExpense)}</div>
+          <p className="note">כולל מחיה ותשלומים שאתם מנהלים</p>
+        </article>
+        <article className="mt-surface stat">
+          <h3>מה נשאר בתזרים</h3>
+          <div
+            className="val"
+            style={{
+              color:
+                monthIncome - monthExpense >= 0
+                  ? "var(--mt-mint-deep)"
+                  : "var(--mt-danger)",
+            }}
+          >
+            {monthIncome - monthExpense >= 0 ? "+" : ""}
+            {formatIls(monthIncome - monthExpense)}
+          </div>
+          <p className="note">הניצחון השקט — או האות לכוון מחדש</p>
+        </article>
+      </div>
+
+      <Pulse
+        tone="boost"
+        label="ליווי רגשי"
+        title="כל רישום הוא שליטה — לא ביקורת"
+        text="לראות הוצאה זה לא כישלון. זה אומץ להסתכל. אתם בונים תמונה אמיתית."
+      />
+
+      <WinStrip
+        items={[
+          { label: "יתרה בעו״ש", value: formatIls(checkingBalance) },
+          ...(budget
+            ? [
+                {
+                  label: "נותר החודש",
+                  value: formatIls(budget.leftover),
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <FeelRow
+        items={[
+          {
+            emo: "להבין",
+            title: "כל שורה היא עובדה",
+            text: "לא האשמה. המידע כאן כדי שתראו שליטה, לא כדי לשפוט.",
+          },
+          {
+            emo: "להרגיש",
+            title: "מותר לנשום",
+            text: "גם הוצאה לגיטימית היא חלק מחיים שעובדים — לא «בזבוז» אוטומטי.",
+          },
+          {
+            emo: "לעשות",
+            title: "רישום קטן",
+            text: "הוסיפו תנועה אחת או ייבאו מסמך — זה כבר מחזק את התמונה.",
+            hold: true,
+          },
+        ]}
       />
 
       <PeriodBar
@@ -1218,59 +1585,82 @@ function MoneyInner() {
         }
       />
 
+      {(loanFilter || cardFilter) && tab === "txs" && (
+        <p className="muted" style={{ margin: 0 }}>
+          מסונן לפי{" "}
+          {loanFilter
+            ? `הלוואה · ${loanOpts.find((l) => l.id === loanFilter)?.name || loanFilter}`
+            : `כרטיס · ${cardOpts.find((c) => c.id === cardFilter)?.name || cardFilter}`}
+          {" · "}
+          <Link href={appHref("/app/money", month)}>הסר סינון</Link>
+        </p>
+      )}
+
       {budget && tab === "txs" && (
-        <section className="card month-flow-strip month-flow-sticky">
-          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-            {labelMonthHe(month)} · קבוע{" "}
-            {formatIls(
-              budget.fixed.basisForLeftover === "expected"
-                ? budget.fixed.expectedTotal
-                : budget.fixed.actualTotal,
-            )}
-            {budget.fixed.basisForLeftover === "expected" ? " (צפוי)" : ""} ·
-            גמיש {formatIls(budget.flexible.actualTotal)}
-            {(budget.allocatedToGoals > 0 || monthToGoals > 0)
-              ? ` · ליעדים ${formatIls(budget.allocatedToGoals || monthToGoals)}`
-              : ""}
-          </p>
-          <div className="month-flow-bars" aria-hidden>
-            <div className="month-flow-row">
-              <span className="tx-in">הכנסות</span>
-              <div className="month-flow-track">
-                <div
-                  className="month-flow-fill in"
-                  style={{ width: `${(monthIncome / flowMax) * 100}%` }}
-                />
-              </div>
-              <strong className="tx-in">{formatIls(monthIncome)}</strong>
-            </div>
-            <div className="month-flow-row">
-              <span className="tx-out">הוצאות</span>
-              <div className="month-flow-track">
-                <div
-                  className="month-flow-fill out"
-                  style={{ width: `${(monthExpense / flowMax) * 100}%` }}
-                />
-              </div>
-              <strong className="tx-out">{formatIls(monthExpense)}</strong>
-            </div>
-            {monthToGoals > 0 && (
-              <div className="month-flow-row">
-                <span>ליעדים</span>
-                <div className="month-flow-track">
-                  <div
-                    className="month-flow-fill out"
-                    style={{
-                      width: `${(monthToGoals / flowMax) * 100}%`,
-                      opacity: 0.65,
-                    }}
-                  />
+        <div className="month-flow-optional">
+          <button
+            type="button"
+            className="btn quiet"
+            aria-expanded={showMonthFlow}
+            onClick={() => setShowMonthFlow((v) => !v)}
+          >
+            {showMonthFlow ? "הסתר סיכום חודש" : "הצג סיכום חודש (אופציונלי)"}
+          </button>
+          {showMonthFlow && (
+            <section className="card month-flow-strip month-flow-sticky">
+              <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                {labelMonthHe(month)} · קבוע{" "}
+                {formatIls(
+                  budget.fixed.basisForLeftover === "expected"
+                    ? budget.fixed.expectedTotal
+                    : budget.fixed.actualTotal,
+                )}
+                {budget.fixed.basisForLeftover === "expected" ? " (צפוי)" : ""} ·
+                משתנה {formatIls(budget.flexible.actualTotal)}
+                {(budget.allocatedToGoals > 0 || monthToGoals > 0)
+                  ? ` · ליעדים ${formatIls(budget.allocatedToGoals || monthToGoals)}`
+                  : ""}
+              </p>
+              <div className="month-flow-bars" aria-hidden>
+                <div className="month-flow-row">
+                  <span className="tx-in">הכנסות</span>
+                  <div className="month-flow-track">
+                    <div
+                      className="month-flow-fill in"
+                      style={{ width: `${(monthIncome / flowMax) * 100}%` }}
+                    />
+                  </div>
+                  <strong className="tx-in">{formatIls(monthIncome)}</strong>
                 </div>
-                <strong>{formatIls(monthToGoals)}</strong>
+                <div className="month-flow-row">
+                  <span className="tx-out">הוצאות</span>
+                  <div className="month-flow-track">
+                    <div
+                      className="month-flow-fill out"
+                      style={{ width: `${(monthExpense / flowMax) * 100}%` }}
+                    />
+                  </div>
+                  <strong className="tx-out">{formatIls(monthExpense)}</strong>
+                </div>
+                {monthToGoals > 0 && (
+                  <div className="month-flow-row">
+                    <span>ליעדים</span>
+                    <div className="month-flow-track">
+                      <div
+                        className="month-flow-fill out"
+                        style={{
+                          width: `${(monthToGoals / flowMax) * 100}%`,
+                          opacity: 0.65,
+                        }}
+                      />
+                    </div>
+                    <strong>{formatIls(monthToGoals)}</strong>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </section>
+            </section>
+          )}
+        </div>
       )}
 
       <div className="hub-tabs">
@@ -1283,6 +1673,13 @@ function MoneyInner() {
         </button>
         <button
           type="button"
+          className={tab === "fixed" ? "active" : undefined}
+          onClick={() => setTab("fixed")}
+        >
+          קבועים
+        </button>
+        <button
+          type="button"
           className={tab === "import" ? "active" : undefined}
           onClick={() => setTab("import")}
         >
@@ -1290,11 +1687,63 @@ function MoneyInner() {
         </button>
       </div>
 
-      {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
       {msg && <p className="badge good">{msg}</p>}
 
-      {tab === "txs" && (
+      {pendingConfirm?.kind === "delete-tx" && (
+        <ConfirmPanel
+          title="מחיקת תנועה"
+          danger
+          busy={busy}
+          confirmLabel="מחיקה"
+          message={
+            pendingConfirm.tx.installmentPlanId
+              ? "למחוק את התנועה הזו? זו עסקת תשלומים — הפריסה תתעדכן בהתאם."
+              : "למחוק את התנועה הזו?"
+          }
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => void executeDeleteTx(pendingConfirm.tx)}
+        />
+      )}
+      {pendingConfirm?.kind === "remove-commitment" && (
+        <ConfirmPanel
+          title="הסרת הוצאה קבועה"
+          danger
+          busy={busy}
+          confirmLabel="הסרה"
+          message={`להסיר את ההוצאה הקבועה «${pendingConfirm.titleHe}»?`}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => void executeRemoveCommitment(pendingConfirm.id)}
+        />
+      )}
+      {pendingConfirm?.kind === "undo-import" && (
+        <ConfirmPanel
+          title="ביטול ייבוא"
+          danger
+          busy={busy}
+          confirmLabel="בטל ייבוא"
+          message={
+            pendingConfirm.latestConfirmed
+              ? "לבטל את הייבוא האחרון ולהסיר את התנועות שלו?"
+              : "לבטל את הייבוא ולהסיר את התנועות שלו?"
+          }
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => {
+            const docId = pendingConfirm.docId;
+            setPendingConfirm(null);
+            void undo(docId);
+          }}
+        />
+      )}
+
+      {(tab === "txs" || tab === "fixed") && (
         <>
+          {tab === "txs" && (
+          <div className="mt-surface money-actions-panel rise-2">
           <div className="money-actions">
             <div className="dir-chips" role="group" aria-label="סינון כיוון">
               {(
@@ -1322,7 +1771,7 @@ function MoneyInner() {
                 </button>
               ))}
             </div>
-            <label className="tx-search">
+            <label className="tx-search field" style={{ marginBottom: 0 }}>
               <span className="sr-only">חיפוש תנועות</span>
               <span className="tx-search-icon" aria-hidden>
                 ⌕
@@ -1381,7 +1830,7 @@ function MoneyInner() {
               {addDraft ? (
                 <button
                   type="button"
-                  className="dir-chip"
+                  className="btn secondary"
                   onClick={cancelAddDraft}
                 >
                   ביטול הוספה
@@ -1390,14 +1839,14 @@ function MoneyInner() {
                 <>
                   <button
                     type="button"
-                    className="dir-chip add-expense"
+                    className="btn"
                     onClick={() => openAddDraft("expense")}
                   >
                     + הוצאה
                   </button>
                   <button
                     type="button"
-                    className="dir-chip add-income"
+                    className="btn secondary"
                     onClick={() => openAddDraft("income")}
                   >
                     + הכנסה
@@ -1406,6 +1855,8 @@ function MoneyInner() {
               )}
             </div>
           </div>
+          </div>
+          )}
 
           {commitmentOffer && (
             <div className="commitment-offer">
@@ -1432,96 +1883,228 @@ function MoneyInner() {
           )}
 
           <section className="card tx-panel">
-            {addDraft?.mode === "expense" && (
-              <div className="tx-draft-fixed">
-                <div className="tx-draft-fixed-head">
-                  <span className="muted">הוצאות קבועות</span>
+            <div className="tx-draft-fixed">
+              <div className="tx-draft-fixed-head">
+                <button
+                  type="button"
+                  className="linkish tx-fixed-toggle"
+                  aria-expanded={fixedOpen || tab === "fixed"}
+                  onClick={() => {
+                    if (tab === "fixed") setTab("txs");
+                    else setFixedOpen((v) => !v);
+                  }}
+                >
+                  {fixedOpen || tab === "fixed" ? "▼" : "▶"} הוצאות קבועות ·{" "}
+                  {labelMonthHe(month)}
+                  {!fixedOpen &&
+                  tab !== "fixed" &&
+                  pendingCommitments.length > 0
+                    ? ` · ${pendingCommitments.length} פתוחות`
+                    : ""}
+                  {!fixedOpen &&
+                  tab !== "fixed" &&
+                  pendingCommitments.length === 0 &&
+                  expenseCommitments.length > 0
+                    ? ` · ${expenseCommitments.length}`
+                    : ""}
+                </button>
+                {(fixedOpen || tab === "fixed") && (
                   <div className="tx-draft-fixed-actions">
-                    {pendingCommitments.length > 1 && (
+                    {pendingCommitments.length > 0 && (
                       <button
                         type="button"
                         className="btn secondary"
                         disabled={busy}
                         onClick={() => void recordAllPendingCommitments()}
-                        title="יוצר תנועה לכל הוצאה קבועה שטרם שולמה החודש"
+                        title="רושם פעם אחת לחודש — מהחשבון או באשראי לפי כל התחייבות"
                       >
-                        רשום את כל הפתוחות ({pendingCommitments.length})
+                        רשום פתוחות ({pendingCommitments.length})
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="linkish"
-                      disabled={busy}
-                      onClick={() => void saveDraftAsCommitment()}
-                      title="שומר את שדות הטיוטה כהתחייבות חודשית (בלי תנועה)"
-                    >
-                      + שמור טיוטה כקבועה
-                    </button>
+                    {cardOpts.length > 0 && (
+                      <button
+                        type="button"
+                        className="linkish muted"
+                        disabled={busy}
+                        onClick={() => void chargeDueCardInstallments()}
+                        title="פריסות תשלומים (לא הוראת קבע) — תשלום N לחודש הנבחר"
+                      >
+                        רשום פריסות לחודש
+                      </button>
+                    )}
                   </div>
-                </div>
-                {expenseCommitments.length === 0 ? (
-                  <p className="muted tx-draft-fixed-empty">
-                    אין עדיין. מלאו סכום + קטגוריה בטיוטה ולחצו «שמור טיוטה
-                    כקבועה».
-                  </p>
-                ) : (
-                  <div className="tx-draft-chips">
-                    {expenseCommitments.map((item) => {
-                      const open =
-                        item.status === "pending" || item.status === "partial";
-                      const fillAmt =
-                        Math.max(0, item.expected - item.actual) ||
-                        item.expected;
-                      return (
-                        <span
-                          key={item.commitmentId || item.titleHe}
-                          className={`tx-draft-chip-wrap${open ? "" : " done"}`}
-                        >
-                          <button
-                            type="button"
-                            className="tx-draft-chip"
-                            onClick={() => fillFromCommitment(item)}
-                            title={
-                              open
-                                ? "מילוי הטיוטה"
-                                : "שולם החודש — לחיצה ממלאת בכל זאת"
-                            }
-                          >
-                            {item.titleHe} · {formatIls(fillAmt)}
-                            {!open && (
-                              <span className="tx-draft-chip-status">✓</span>
-                            )}
-                          </button>
-                          {item.commitmentId && (
-                            <button
-                              type="button"
-                              className="tx-draft-chip-x"
-                              aria-label={`הסר ${item.titleHe}`}
-                              disabled={busy}
-                              onClick={() =>
-                                void removeCommitment(
-                                  item.commitmentId!,
-                                  item.titleHe,
-                                )
-                              }
-                            >
-                              ×
-                            </button>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-                {pendingCommitments.length > 0 && (
-                  <p className="muted tx-draft-fixed-hint">
-                    אחת־אחת: לחצו צ׳יפ → שמירה → הצ׳יפ הבא. ביחד: «רשום את כל
-                    הפתוחות».
-                  </p>
                 )}
               </div>
-            )}
+              {(fixedOpen || tab === "fixed") && (
+                <>
+              {expenseCommitments.length === 0 ? (
+                <p className="muted tx-draft-fixed-empty">
+                  אין התחייבויות לחודש זה. הוסיפו הוצאה → מלאו סכום → «שמור
+                  כקבועה» (מהחשבון) או בחרו כרטיס → «שמור כהוראת קבע באשראי».
+                </p>
+              ) : (
+                <div className="tx-fixed-groups">
+                  {accountCommitments.length > 0 && (
+                    <div className="tx-fixed-group">
+                      <p className="tx-fixed-group-label muted">מהחשבון</p>
+                      <div className="tx-draft-chips">
+                        {accountCommitments.map((item) => {
+                          const open =
+                            item.status === "pending" ||
+                            item.status === "partial";
+                          const fillAmt =
+                            Math.max(0, item.expected - item.actual) ||
+                            item.expected;
+                          const from = formatStartMonthHe(item.startMonth);
+                          return (
+                            <span
+                              key={item.commitmentId || item.titleHe}
+                              className={`tx-draft-chip-wrap${open ? "" : " done"}`}
+                            >
+                              <button
+                                type="button"
+                                className="tx-draft-chip"
+                                onClick={() => fillFromCommitment(item)}
+                                title={
+                                  open
+                                    ? from
+                                      ? `מילוי טיוטה · מתחיל מ־${from}`
+                                      : "מילוי הטיוטה לרישום החודש"
+                                    : `שולם ב־${month} — לחיצה לא תרשום שוב`
+                                }
+                              >
+                                {item.titleHe} · {formatIls(fillAmt)}
+                                {from && (
+                                  <span className="tx-draft-chip-status">
+                                    מ־{from}
+                                  </span>
+                                )}
+                                {!open && (
+                                  <span className="tx-draft-chip-status">✓</span>
+                                )}
+                              </button>
+                              {item.commitmentId && (
+                                <button
+                                  type="button"
+                                  className="tx-draft-chip-x"
+                                  aria-label={`הסר ${item.titleHe}`}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void removeCommitment(
+                                      item.commitmentId!,
+                                      item.titleHe,
+                                    )
+                                  }
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {cardCommitments.length > 0 && (
+                    <div className="tx-fixed-group">
+                      <p className="tx-fixed-group-label muted">הוראת קבע באשראי</p>
+                      <div className="tx-draft-chips">
+                        {cardCommitments.map((item) => {
+                          const open =
+                            item.status === "pending" ||
+                            item.status === "partial";
+                          const fillAmt =
+                            Math.max(0, item.expected - item.actual) ||
+                            item.expected;
+                          const from = formatStartMonthHe(item.startMonth);
+                          return (
+                            <span
+                              key={item.commitmentId || item.titleHe}
+                              className={`tx-draft-chip-wrap${open ? "" : " done"}`}
+                            >
+                              <button
+                                type="button"
+                                className="tx-draft-chip"
+                                onClick={() => fillFromCommitment(item)}
+                                title={
+                                  open
+                                    ? `${cardLabel(item.creditCardId)}${from ? ` · מ־${from}` : ""}`
+                                    : `שולם ב־${month} באשראי — לחיצה לא תרשום שוב`
+                                }
+                              >
+                                {item.titleHe} · {formatIls(fillAmt)}
+                                <span className="tx-draft-chip-status">
+                                  {cardLabel(item.creditCardId)}
+                                </span>
+                                {from && (
+                                  <span className="tx-draft-chip-status">
+                                    מ־{from}
+                                  </span>
+                                )}
+                                {!open && (
+                                  <span className="tx-draft-chip-status">✓</span>
+                                )}
+                              </button>
+                              {item.commitmentId && (
+                                <button
+                                  type="button"
+                                  className="tx-draft-chip-x"
+                                  aria-label={`הסר ${item.titleHe}`}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void removeCommitment(
+                                      item.commitmentId!,
+                                      item.titleHe,
+                                    )
+                                  }
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {pendingCommitments.length > 0 && (
+                <p className="muted tx-draft-fixed-hint">
+                  לחודש זה בלבד: צ׳יפ פתוח → שמירה (פעם אחת). ✓ = כבר נרשם.
+                  חודשים לפני «מ־…» לא מציגים את ההתחייבות.
+                </p>
+              )}
+                </>
+              )}
+              {addDraft?.mode === "expense" && (
+                <div className="tx-draft-fixed-actions" style={{ marginTop: "0.35rem" }}>
+                  <button
+                    type="button"
+                    className="linkish"
+                    disabled={busy}
+                    onClick={() => {
+                      setFixedOpen(true);
+                      void saveDraftAsCommitment();
+                    }}
+                    title={
+                      addDraft.economicRole === "CARD_PURCHASE"
+                        ? "שומר כהוראת קבע באשראי מהחודש הנבחר"
+                        : "שומר כהוצאה קבועה מהחשבון מהחודש הנבחר"
+                    }
+                  >
+                    {addDraft.economicRole === "CARD_PURCHASE"
+                      ? "+ שמור טיוטה כהוראת קבע באשראי"
+                      : "+ שמור טיוטה כקבועה מהחשבון"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {tab === "txs" && (
+            <>
             {addDraft && (
+              <div className="tx-draft-block">
               <div
                 className={`tx-dense-row draft with-date ${
                   addDraft.mode === "income" ? "in" : "out"
@@ -1597,12 +2180,237 @@ function MoneyInner() {
                   </button>
                   <button
                     type="button"
-                    className="linkish"
+                    className="linkish muted"
+                    disabled={busy}
                     onClick={cancelAddDraft}
                   >
                     ביטול
                   </button>
                 </div>
+              </div>
+              {addDraft.mode === "expense" && (
+                <div className="tx-pay-panel">
+                  <div className="tx-pay-label">איך שולם</div>
+                  <div className="dir-chips tx-pay-chips" role="group" aria-label="אופן תשלום">
+                    {(
+                      [
+                        ["STANDARD", "מהחשבון"],
+                        ["CARD_PURCHASE", "כרטיס אשראי"],
+                        ["CARD_SETTLEMENT", "סילוק כרטיס"],
+                        ["LOAN_PAYMENT", "תשלום הלוואה"],
+                      ] as const
+                    ).map(([role, label]) => (
+                      <button
+                        key={role}
+                        type="button"
+                        className={`dir-chip${
+                          addDraft.economicRole === role ? " active" : ""
+                        }`}
+                        onClick={() =>
+                          setAddDraft({
+                            ...addDraft,
+                            economicRole: role,
+                            loanId: "",
+                            creditCardId: "",
+                            installmentCount: "1",
+                          })
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {addDraft.economicRole === "LOAN_PAYMENT" && (
+                    <div className="tx-pay-detail">
+                      <div className="tx-pay-label">הלוואה</div>
+                      <div className="dir-chips" role="group" aria-label="בחירת הלוואה">
+                        {loanOpts.length === 0 ? (
+                          <span className="muted">אין הלוואות פעילות</span>
+                        ) : (
+                          loanOpts.map((l) => (
+                            <button
+                              key={l.id}
+                              type="button"
+                              className={`dir-chip${
+                                addDraft.loanId === l.id ? " active" : ""
+                              }`}
+                              onClick={() =>
+                                setAddDraft({ ...addDraft, loanId: l.id })
+                              }
+                            >
+                              {l.name}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                      <p className="muted tx-pay-hint">
+                        יירשם כהוצאה ויוריד את יתרת ההלוואה. העו״ש יתעדכן.
+                      </p>
+                    </div>
+                  )}
+
+                  {(addDraft.economicRole === "CARD_PURCHASE" ||
+                    addDraft.economicRole === "CARD_SETTLEMENT") && (
+                    <div className="tx-pay-detail">
+                      <div className="tx-pay-label">כרטיס</div>
+                      <div className="dir-chips" role="group" aria-label="בחירת כרטיס">
+                        {cardOpts.length === 0 ? (
+                          <span className="muted">אין כרטיסים פעילים</span>
+                        ) : (
+                          cardOpts.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className={`dir-chip${
+                                addDraft.creditCardId === c.id ? " active" : ""
+                              }`}
+                              onClick={() =>
+                                setAddDraft({
+                                  ...addDraft,
+                                  creditCardId: c.id,
+                                })
+                              }
+                            >
+                              {c.name}
+                              {c.lastFour ? ` ·••• ${c.lastFour}` : ""}
+                            </button>
+                          ))
+                        )}
+                      </div>
+
+                      {addDraft.economicRole === "CARD_PURCHASE" && (
+                        <>
+                          <div className="tx-pay-label">פריסה</div>
+                          <div
+                            className="dir-chips"
+                            role="group"
+                            aria-label="חד־פעמי או תשלומים"
+                          >
+                            <button
+                              type="button"
+                              className={`dir-chip${
+                                Number(addDraft.installmentCount) <= 1
+                                  ? " active"
+                                  : ""
+                              }`}
+                              onClick={() =>
+                                setAddDraft({
+                                  ...addDraft,
+                                  installmentCount: "1",
+                                })
+                              }
+                            >
+                              חד־פעמי
+                            </button>
+                            <button
+                              type="button"
+                              className={`dir-chip${
+                                Number(addDraft.installmentCount) >= 2
+                                  ? " active"
+                                  : ""
+                              }`}
+                              onClick={() =>
+                                setAddDraft({
+                                  ...addDraft,
+                                  installmentCount:
+                                    Number(addDraft.installmentCount) >= 2
+                                      ? addDraft.installmentCount
+                                      : "3",
+                                })
+                              }
+                            >
+                              בתשלומים
+                            </button>
+                          </div>
+                          {Number(addDraft.installmentCount) >= 2 && (
+                            <label className="tx-pay-install-count">
+                              מספר תשלומים
+                              <input
+                                type="number"
+                                min={2}
+                                max={48}
+                                value={addDraft.installmentCount}
+                                onChange={(e) =>
+                                  setAddDraft({
+                                    ...addDraft,
+                                    installmentCount: e.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                          )}
+                          {(() => {
+                            const n = Math.max(
+                              1,
+                              Math.floor(
+                                Number(addDraft.installmentCount) || 1,
+                              ),
+                            );
+                            const total = Number(addDraft.amount);
+                            const monthly =
+                              Number.isFinite(total) && total > 0 && n >= 2
+                                ? Math.round((total / n) * 100) / 100
+                                : null;
+                            if (n <= 1) {
+                              return (
+                                <p className="muted tx-pay-hint">
+                                  הסכום המלא נכנס להוצאות החודש וליתרת הכרטיס.
+                                  העו״ש לא משתנה עד סילוק.
+                                </p>
+                              );
+                            }
+                            return (
+                              <p className="muted tx-pay-hint">
+                                {monthly != null
+                                  ? `רק ${formatIls(monthly)} ייספר בהוצאות החודש וביתרת המחזור. שאר ${(formatIls(Math.round((total - monthly) * 100) / 100))} יישמר כהתחייבות תשלומים.`
+                                  : "רק תשלום החודש נספר בהוצאות; היתר התחייבות עתידית — בלי כפל ספירה."}
+                              </p>
+                            );
+                          })()}
+                          {Number(addDraft.installmentCount) <= 1 &&
+                            addDraft.creditCardId && (
+                              <div className="tx-card-standing-cta">
+                                <button
+                                  type="button"
+                                  className="btn secondary"
+                                  disabled={busy}
+                                  onClick={() => void saveDraftAsCommitment()}
+                                >
+                                  שמור כהוראת קבע באשראי
+                                </button>
+                                <p className="muted tx-pay-hint">
+                                  כמו שכירות — תופיע בצ׳יפים מ־{month}. בכל חודש
+                                  רושמים פעם אחת כקנייה בכרטיס (לא פריסת
+                                  תשלומים). «שמירה» למעלה = רק החודש הזה.
+                                </p>
+                              </div>
+                            )}
+                          {Number(addDraft.installmentCount) <= 1 &&
+                            !addDraft.creditCardId && (
+                              <p className="muted tx-pay-hint">
+                                בחרו כרטיס ואז אפשר לשמור כהוראת קבע באשראי.
+                              </p>
+                            )}
+                        </>
+                      )}
+
+                      {addDraft.economicRole === "CARD_SETTLEMENT" && (
+                        <p className="muted tx-pay-hint">
+                          יורד מהעו״ש ומוריד את יתרת הכרטיס — לא נספר כהוצאה
+                          חדשה (הקנייה כבר נספרה).
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {addDraft.economicRole === "STANDARD" && (
+                    <p className="muted tx-pay-hint">
+                      חיוב ישיר מהעו״ש — נספר בהוצאות החודש.
+                    </p>
+                  )}
+                </div>
+              )}
               </div>
             )}
             {filtered.length === 0 && !addDraft ? (
@@ -1681,6 +2489,8 @@ function MoneyInner() {
                   </p>
                 )}
               </div>
+            )}
+            </>
             )}
           </section>
         </>
@@ -1894,16 +2704,11 @@ function MoneyInner() {
                       type="button"
                       disabled={busy}
                       onClick={() => {
-                        if (
-                          !window.confirm(
-                            latestConfirmed
-                              ? "לבטל את הייבוא האחרון ולהסיר את התנועות שלו?"
-                              : "לבטל את הייבוא ולהסיר את התנועות שלו?",
-                          )
-                        ) {
-                          return;
-                        }
-                        void undo(d.id);
+                        setPendingConfirm({
+                          kind: "undo-import",
+                          docId: d.id,
+                          latestConfirmed,
+                        });
                       }}
                     >
                       {latestConfirmed ? "בטל ייבוא אחרון" : "בטל ייבוא"}
@@ -1923,7 +2728,7 @@ function MoneyInner() {
 
 export default function MoneyPage() {
   return (
-    <Suspense fallback={<p className="muted">טוען…</p>}>
+    <Suspense fallback={<p className="mt-state mt-state-loading">טוען…</p>}>
       <MoneyInner />
     </Suspense>
   );

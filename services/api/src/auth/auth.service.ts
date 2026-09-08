@@ -159,9 +159,31 @@ export class AuthService implements OnModuleInit {
       });
     }
 
+    // Optional credit cards — created before commitments so payVia can link.
+    const cardIds: string[] = [];
+    for (const card of dto.creditCards ?? []) {
+      const name = card.name?.trim();
+      if (!name) continue;
+      const created = await this.prisma.creditCard.create({
+        data: {
+          userId,
+          name,
+          currentBalance: new Prisma.Decimal(card.currentBalance ?? 0),
+          creditLimit: new Prisma.Decimal(card.creditLimit ?? 0),
+          active: true,
+        },
+      });
+      cardIds.push(created.id);
+    }
+
     // Fixed expenses become budget commitments — not synthetic ledger txs.
     for (const exp of dto.fixedExpenses) {
       if (exp.amount <= 0) continue;
+      const viaCard =
+        exp.payVia === "CREDIT_CARD" &&
+        exp.creditCardIndex != null &&
+        exp.creditCardIndex >= 0 &&
+        exp.creditCardIndex < cardIds.length;
       await this.prisma.budgetCommitment.create({
         data: {
           userId,
@@ -170,6 +192,8 @@ export class AuthService implements OnModuleInit {
           expectedAmount: new Prisma.Decimal(exp.amount),
           nature: "FIXED",
           cadence: "MONTHLY",
+          payVia: viaCard ? "CREDIT_CARD" : "ACCOUNT",
+          creditCardId: viaCard ? cardIds[exp.creditCardIndex!] : null,
           sourceType: "USER_INPUT",
           userConfirmed: true,
           active: true,
@@ -177,16 +201,18 @@ export class AuthService implements OnModuleInit {
       });
     }
 
-    await this.prisma.goal.create({
-      data: {
-        userId,
-        title: dto.goalTitle,
-        targetAmount: new Prisma.Decimal(dto.goalTargetAmount),
-        currentAmount: new Prisma.Decimal(dto.goalCurrentAmount ?? 0),
-        sourceType: "USER_INPUT",
-        userConfirmed: true,
-      },
-    });
+    if (dto.goalTitle && dto.goalTargetAmount != null && dto.goalTargetAmount > 0) {
+      await this.prisma.goal.create({
+        data: {
+          userId,
+          title: dto.goalTitle,
+          targetAmount: new Prisma.Decimal(dto.goalTargetAmount),
+          currentAmount: new Prisma.Decimal(dto.goalCurrentAmount ?? 0),
+          sourceType: "USER_INPUT",
+          userConfirmed: true,
+        },
+      });
+    }
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -200,6 +226,7 @@ export class AuthService implements OnModuleInit {
         meta: JSON.stringify({
           accountId: account.id,
           commitments: dto.fixedExpenses.filter((e) => e.amount > 0).length,
+          creditCards: cardIds.length,
         }),
       },
     });

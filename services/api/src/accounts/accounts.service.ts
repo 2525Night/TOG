@@ -5,11 +5,15 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { MonthFactsService } from "../month-facts/month-facts.service";
 import { CreateAccountDto, UpdateAccountDto } from "./accounts.dto";
 
 @Injectable()
 export class AccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthFacts: MonthFactsService,
+  ) {}
 
   list(userId: string) {
     return this.prisma.financialAccount.findMany({
@@ -52,7 +56,12 @@ export class AccountsService {
 
   async update(userId: string, id: string, dto: UpdateAccountDto) {
     await this.ensureOwned(userId, id);
-    return this.prisma.financialAccount.update({
+    if (dto.kind === "CREDIT_CARD" || dto.kind === "LOAN") {
+      throw new BadRequestException(
+        "כרטיס אשראי והלוואה מנוהלים במסך אשראי והלוואות — לא כחשבון עו״ש",
+      );
+    }
+    const account = await this.prisma.financialAccount.update({
       where: { id },
       data: {
         name: dto.name,
@@ -64,6 +73,8 @@ export class AccountsService {
             : new Prisma.Decimal(dto.currentBalance),
       },
     });
+    this.monthFacts.invalidateUser(userId);
+    return account;
   }
 
   private async ensureOwned(userId: string, id: string) {

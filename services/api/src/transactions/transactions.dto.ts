@@ -6,7 +6,7 @@ import {
   IsString,
   Min,
 } from "class-validator";
-import { TxDirection } from "@prisma/client";
+import { EconomicRole, TxDirection } from "@prisma/client";
 
 export class CreateTransactionDto {
   @IsEnum(TxDirection)
@@ -29,6 +29,22 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsEnum(EconomicRole)
+  economicRole?: EconomicRole;
+
+  @IsOptional()
+  @IsString()
+  loanId?: string;
+
+  @IsOptional()
+  @IsString()
+  creditCardId?: string;
+
+  @IsOptional()
+  @IsString()
+  installmentPlanId?: string;
 }
 
 export class UpdateTransactionDto {
@@ -52,4 +68,20 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   note?: string | null;
+
+  @IsOptional()
+  @IsEnum(EconomicRole)
+  economicRole?: EconomicRole;
+
+  @IsOptional()
+  @IsString()
+  loanId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  creditCardId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  installmentPlanId?: string | null;
 }

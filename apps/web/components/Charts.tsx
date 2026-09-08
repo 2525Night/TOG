@@ -141,6 +141,145 @@ function donutSlice(
   ].join(" ");
 }
 
+/** How this month's goal pool is split: allocated · standing · free. */
+export function GoalsPoolPie({
+  allocated,
+  plannedStanding,
+  free,
+  hint,
+}: {
+  allocated: number;
+  plannedStanding: number;
+  free: number;
+  hint?: string;
+}) {
+  const slices: BudgetSlice[] = [
+    {
+      key: "allocated",
+      labelHe: "כבר ליעדים החודש",
+      amount: Math.max(0, allocated),
+      color: "color-mix(in srgb, var(--accent) 78%, #0b3d3a)",
+    },
+    {
+      key: "planned",
+      labelHe: "ממתין בהוראת קבע",
+      amount: Math.max(0, plannedStanding),
+      color: "color-mix(in srgb, var(--accent-2) 75%, #c45c14)",
+    },
+    {
+      key: "free",
+      labelHe: "פנוי להקצאה",
+      amount: Math.max(0, free),
+      color: "color-mix(in srgb, var(--accent) 42%, #b8ebe0)",
+    },
+  ].filter((s) => s.amount > 0.005);
+
+  const total =
+    slices.reduce((s, x) => s + x.amount, 0) ||
+    Math.max(allocated + plannedStanding + free, 1);
+  const cx = 60;
+  const cy = 60;
+  const rOuter = 52;
+  const rInner = 33;
+
+  let angle = 0;
+  const paths = slices.map((s) => {
+    const sweep = (s.amount / total) * 360;
+    const start = angle;
+    const end = angle + Math.max(sweep, 0.5);
+    angle = end;
+    return { ...s, d: donutSlice(cx, cy, rOuter, rInner, start, end) };
+  });
+
+  const empty = slices.length === 0;
+  const legendItems = empty
+    ? [
+        {
+          key: "allocated",
+          labelHe: "כבר ליעדים החודש",
+          amount: Math.max(0, allocated),
+          color: "color-mix(in srgb, var(--accent) 78%, #0b3d3a)",
+        },
+        {
+          key: "planned",
+          labelHe: "ממתין בהוראת קבע",
+          amount: Math.max(0, plannedStanding),
+          color: "color-mix(in srgb, var(--accent-2) 75%, #fff)",
+        },
+        {
+          key: "free",
+          labelHe: "פנוי להקצאה",
+          amount: Math.max(0, free),
+          color: "color-mix(in srgb, var(--accent) 42%, #b8ebe0)",
+        },
+      ]
+    : slices;
+
+  return (
+    <div
+      className="goals-pool-pie"
+      role="img"
+      aria-label={`פנוי להקצאה ${Math.round(free).toLocaleString("he-IL")} שקלים. כבר ליעדים ${Math.round(allocated).toLocaleString("he-IL")}`}
+    >
+      <div className="goals-pool-pie-main">
+        <div className="budget-pie-visual goals-pool-pie-visual">
+          <svg viewBox="0 0 120 120" width="148" height="148" aria-hidden>
+            {empty ? (
+              <circle
+                cx={cx}
+                cy={cy}
+                r={(rOuter + rInner) / 2}
+                fill="none"
+                stroke="var(--border)"
+                strokeWidth={rOuter - rInner}
+              />
+            ) : paths.length === 1 ? (
+              <circle
+                cx={cx}
+                cy={cy}
+                r={(rOuter + rInner) / 2}
+                fill="none"
+                stroke={paths[0].color}
+                strokeWidth={rOuter - rInner}
+              />
+            ) : (
+              paths.map((p) => <path key={p.key} d={p.d} fill={p.color} />)
+            )}
+            <circle cx={cx} cy={cy} r={rInner - 1} fill="#fff" />
+          </svg>
+        </div>
+
+        <div className="goals-pool-pie-aside">
+          <p className="goals-pool-pie-caption">איך מתחלק החודש</p>
+          <ul className="goals-pool-pie-legend">
+            {legendItems.map((s) => (
+              <li key={s.key}>
+                <span
+                  className="budget-pie-swatch"
+                  style={{ background: s.color }}
+                  aria-hidden
+                />
+                <span className="goals-pool-pie-leg-label">{s.labelHe}</span>
+                <strong
+                  className={`goals-pool-pie-leg-amt goals-pool-pie-leg-amt--${s.key}`}
+                  style={
+                    s.key === "free"
+                      ? { color: "var(--accent-strong)" }
+                      : { color: s.color }
+                  }
+                >
+                  ₪{Math.round(s.amount).toLocaleString("he-IL")}
+                </strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      {hint ? <p className="muted goals-pool-pie-hint">{hint}</p> : null}
+    </div>
+  );
+}
+
 /** How this month's income is split: fixed · flexible · goals · leftover. */
 export function BudgetPie({
   income,

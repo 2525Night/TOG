@@ -61,4 +61,9 @@ export class IntelligenceController {
   dismiss(@CurrentUser() user: AuthUser, @Param("id") id: string) {
     return this.intelligence.dismissAlert(user.userId, id);
   }
+
+  @Post("alerts/:id/snooze")
+  snooze(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.intelligence.snoozeAlert(user.userId, id, 7);
+  }
 }

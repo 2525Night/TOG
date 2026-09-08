@@ -39,3 +39,6 @@ tmp/
 # Godot leftovers (unused)
 .godot/
 .mono/
+
+*.tsbuildinfo
+

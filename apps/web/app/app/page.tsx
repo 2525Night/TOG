@@ -6,6 +6,9 @@ import { api, formatIls } from "@/lib/api";
 import { CategoryBars, BudgetPie } from "@/components/Charts";
 import { PeriodBar, useSelectedMonth, labelMonthHe } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
+import { Pulse } from "@/components/Pulse";
+import { FeelRow } from "@/components/FeelRow";
+import { WinStrip } from "@/components/WinStrip";
 
 type BudgetSnapshot = {
   month: string;
@@ -41,12 +44,17 @@ type Summary = {
   completeness: number;
   healthScore: number;
   availableBalance: number;
+  liquidity?: {
+    checkingBalanceNow: number;
+    reservedForObligations: number;
+    availableInPractice: number;
+  };
   incomeMtd: number;
   expenseMtd: number;
   allocatedToGoalsMtd?: number;
   netMtd: number;
   formulaVersion?: string;
-  monthFacts?: {
+    monthFacts?: {
     checkingBalanceNow: number;
     flows: {
       income: number;
@@ -58,6 +66,15 @@ type Summary = {
       leftover: number;
       fixed: BudgetSnapshot["fixed"];
       flexible: BudgetSnapshot["flexible"];
+    };
+    liquidity?: {
+      checkingBalanceNow: number;
+      reservedForObligations: number;
+      availableInPractice: number;
+    };
+    meta?: {
+      hasCheckingAccount?: boolean;
+      txCount?: number;
     };
   };
   overdraftRisk: {
@@ -87,6 +104,19 @@ type Summary = {
     priority: string;
     annualImpactIls?: number;
   }>;
+  attention?: Array<{
+    id: string;
+    type: string;
+    conclusionHe?: string;
+    meaningHe?: string;
+    titleHe: string;
+    bodyHe: string;
+    moneyLineHe?: string;
+    ctaHe: string;
+    href: string;
+    severity: string;
+    alertId?: string;
+  }>;
   patterns: Array<{
     id: string;
     titleHe: string;
@@ -106,6 +136,20 @@ type Summary = {
     targetAmount: number;
     currentAmount: number;
   }>;
+  debtsSummary?: {
+    principalTotal: number;
+    count: number;
+  };
+  emergencyCushion?: {
+    id: string;
+    title: string;
+    targetAmount: number;
+    currentAmount: number;
+    progressPct: number;
+    full?: boolean;
+    remaining?: number;
+  } | null;
+  reservePrompt?: boolean;
   goalCards?: Array<{
     id: string;
     title: string;
@@ -132,6 +176,7 @@ function DashboardInner() {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busySuggest, setBusySuggest] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const [surplusGoalId, setSurplusGoalId] = useState("");
   const [surplusAmount, setSurplusAmount] = useState("");
   const [busySurplus, setBusySurplus] = useState(false);
@@ -181,8 +226,8 @@ function DashboardInner() {
     return () => window.removeEventListener("focus", onFocus);
   }, [month]);
 
-  async function dismiss(id: string) {
-    await api(`/alerts/${id}/dismiss`, { method: "POST", body: "{}" });
+  async function snooze(id: string) {
+    await api(`/alerts/${id}/snooze`, { method: "POST", body: "{}" });
     await load();
   }
 
@@ -235,10 +280,14 @@ function DashboardInner() {
   }
 
   if (error) {
-    return <p style={{ color: "var(--danger)" }}>{error}</p>;
+    return (
+      <p className="form-error" role="alert">
+        {error}
+      </p>
+    );
   }
   if (!data) {
-    return <p className="muted">טוען את המצב שלך…</p>;
+    return <p className="mt-state mt-state-loading">טוען את המצב שלך…</p>;
   }
 
   const riskClass =
@@ -258,21 +307,27 @@ function DashboardInner() {
     b?.allocatedToGoals ??
     0;
   const leftoverBar = facts?.budget.leftover ?? b?.leftover;
+  const checkingBalance =
+    data.liquidity?.checkingBalanceNow ??
+    facts?.liquidity?.checkingBalanceNow ??
+    facts?.checkingBalanceNow ??
+    data.availableBalance;
 
   return (
     <div className="grid" style={{ gap: "0.85rem" }}>
       <PageHeader
-        title="תמונת מצב"
+        kicker="תמונת מצב"
+        title="המצב שלך — בקצרה"
         subtitle={
-          <>
-            <div>סיכום מהיר לחודש הנבחר</div>
-            {data.narrativeHe ? <div>{data.narrativeHe}</div> : null}
-          </>
+          data.narrativeHe ? (
+            <div>{data.narrativeHe}</div>
+          ) : (
+            <div>מבט רגוע על החודש</div>
+          )
         }
       />
 
       <PeriodBar
-        balance={data.availableBalance}
         income={incomeForBar}
         expense={expenseForBar}
         extra={
@@ -293,36 +348,268 @@ function DashboardInner() {
         }
       />
 
-      {(data.dataGaps || []).map((g) => (
-        <section key={g.id} className="card alert-card">
-          <div className="list-row" style={{ border: "none", padding: 0 }}>
-            <div>
-              <strong>{g.titleHe}</strong>
-              <div className="muted">{g.bodyHe}</div>
+      {(() => {
+        const liq =
+          data.liquidity ||
+          facts?.liquidity ||
+          (facts
+            ? {
+                checkingBalanceNow: facts.checkingBalanceNow,
+                reservedForObligations: 0,
+                availableInPractice: facts.checkingBalanceNow,
+              }
+            : {
+                checkingBalanceNow: checkingBalance,
+                reservedForObligations: 0,
+                availableInPractice: checkingBalance,
+              });
+        const z = liq.availableInPractice;
+        const reserved = liq.reservedForObligations;
+        const firstAttention = (data.attention || [])[0];
+        const checkingMissing = facts?.meta?.hasCheckingAccount === false;
+        const zeroCheckingWithReserve =
+          Math.abs(liq.checkingBalanceNow) < 0.005 && reserved > 0.005;
+        const sparseFlows =
+          (facts?.flows.income ?? data.incomeMtd) <= 0 &&
+          (facts?.flows.expense ?? data.expenseMtd) > 0;
+        const showPartialTrust =
+          checkingMissing || zeroCheckingWithReserve || sparseFlows;
+        return (
+          <>
+            {showPartialTrust && (
+              <section
+                className="card alert-card trust-partial"
+                role="status"
+                aria-label="תמונה חלקית"
+              >
+                <strong>התמונה חלקית</strong>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  {checkingMissing
+                    ? "עדיין אין חשבון עו״ש מוגדר — «זמין בפועל» מחושב בלי יתרה אמיתית."
+                    : zeroCheckingWithReserve
+                      ? "יתרת העו״ש 0 ויש סכומים שמורים לתשלומים — המספר למטה משקף פער, לא בהכרח מינוס בבנק."
+                      : "בחודש זה כמעט אין הכנסות רשומות מול הוצאות — המאזן עלול להטעות עד שתוסיפו תנועות."}
+                </p>
+                <div className="clarity-actions" style={{ marginTop: "0.65rem", marginBottom: 0 }}>
+                  <Link
+                    className="btn secondary"
+                    href={
+                      checkingMissing
+                        ? `/app/money?month=${month}`
+                        : `/app/money?month=${month}`
+                    }
+                  >
+                    {checkingMissing || zeroCheckingWithReserve
+                      ? "לעדכון יתרה / תנועות"
+                      : "להוספת תנועות"}
+                  </Link>
+                </div>
+              </section>
+            )}
+            <section className="clarity-answer" aria-label="זמין בפועל">
+              <span className="clarity-answer-label">זמין בפועל</span>
+              <div
+                className={`clarity-answer-value${z < 0 ? " tx-out" : ""}`}
+              >
+                {formatIls(z)}
+              </div>
+              {firstAttention && !showPartialTrust ? (
+                <p className="insight-conclusion" style={{ margin: "0.45rem 0 0" }}>
+                  {firstAttention.conclusionHe || firstAttention.titleHe}
+                </p>
+              ) : null}
+              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                {showPartialTrust
+                  ? "מחושב ממה שרשום במערכת — בדקו שהיתרה והתחייבויות מעודכנים"
+                  : firstAttention
+                    ? firstAttention.meaningHe || firstAttention.bodyHe
+                    : z < 0
+                      ? "מה שבחשבון לא מכסה את מה ששמור לתשלומים"
+                      : data.period && data.period.isCurrentMonth === false
+                        ? "אחרי שמור לתשלומים לפי תאריכי חיוב חיים"
+                        : "אחרי שמור לתשלומים מהיתרה בעו״ש"}
+              </p>
+            </section>
+            <div className="clarity-meaning mt-chips" style={{ display: "flex" }}>
+              <span className="mt-chip">
+                בחשבון <b>{formatIls(liq.checkingBalanceNow)}</b>
+              </span>
+              <span className="mt-chip warn">
+                שמור לתשלומים <b>{formatIls(reserved)}</b>
+              </span>
+              <span className={`badge ${riskClass}`}>
+                {data.overdraftRisk.alreadyNegative
+                  ? "מינוס פעיל"
+                  : data.overdraftRisk.level === "high"
+                    ? "תזרים דחוק"
+                    : data.overdraftRisk.level === "medium"
+                      ? "נזילות דקה"
+                      : "תזרים יציב"}
+              </span>
             </div>
-            <Link className="btn secondary" href={g.href}>
-              {g.ctaHe}
-            </Link>
+            <div className="clarity-actions">
+              {firstAttention ? (
+                <Link className="btn" href={firstAttention.href}>
+                  {firstAttention.ctaHe || "לטפל עכשיו"}
+                </Link>
+              ) : (
+                <Link className="btn" href={`/app/money?month=${month}`}>
+                  הוסף תנועה
+                </Link>
+              )}
+              <button
+                type="button"
+                className="btn secondary"
+                aria-expanded={showDetails}
+                onClick={() => setShowDetails((v) => !v)}
+              >
+                {showDetails ? "הסתר פרטים" : "פרטים נוספים"}
+              </button>
+            </div>
+          </>
+        );
+      })()}
+
+      <Pulse
+        tone={
+          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
+            ? "hold"
+            : data.netMtd >= 0
+              ? "win"
+              : "boost"
+        }
+        mark={
+          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
+            ? "!"
+            : data.netMtd >= 0
+              ? "✓"
+              : "♥"
+        }
+        label="ליווי רגשי"
+        title={
+          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
+            ? "יש לחץ — וגם יש מה לנהל"
+            : data.netMtd >= 0
+              ? "החודש עובד לטובתך"
+              : "אתה לא לבד מול המספרים"
+        }
+        text={
+          data.overdraftRisk.messageHe ||
+          (data.netMtd >= 0
+            ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
+            : "גם אם החיץ קצר, התמונה כאן כדי להרגיע ולכוון — לא כדי לשפוט.")
+        }
+      />
+
+      <WinStrip
+        items={[
+          {
+            label: "תזרים החודש",
+            value: `${data.netMtd >= 0 ? "+" : ""}${formatIls(data.netMtd)}`,
+          },
+          ...(data.goals[0]
+            ? [
+                {
+                  label: "יעד מוביל",
+                  value: `${Math.round(data.goals[0].progressPct)}%`,
+                },
+              ]
+            : []),
+          ...(data.emergencyCushion
+            ? [
+                {
+                  label: "חיץ",
+                  value: `${Math.round(data.emergencyCushion.progressPct)}%`,
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <FeelRow
+        items={[
+          {
+            emo: "להבין",
+            title: "מה המספר אומר",
+            text: "«זמין בפועל» הוא מה שנשאר אחרי שתשלומים ידועים כבר שמורים בצד.",
+          },
+          {
+            emo: "להרגיש",
+            title: "מה מותר להרגיש",
+            text:
+              data.netMtd >= 0
+                ? "הקלה. יש כיוון. מותר לגאווה קטנה בלי להתעלם ממה שעוד חסר."
+                : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל.",
+          },
+          {
+            emo: "לעשות",
+            title: "צעד אחד בלבד",
+            text: "בחרו פעולה קטנה אחת מהרשימה למטה — לא לתקן הכול היום.",
+            hold: true,
+          },
+        ]}
+      />
+
+      {(data.dataGaps || []).map((g) => (
+        <section key={g.id} className="card alert-card insight-card" role="status">
+          <div className="insight-block">
+            <strong className="insight-conclusion">{g.titleHe}</strong>
+            <p className="insight-meaning muted">{g.bodyHe}</p>
+            <div className="clarity-actions" style={{ marginBottom: 0 }}>
+              <Link className="btn secondary" href={g.href}>
+                {g.ctaHe}
+              </Link>
+            </div>
           </div>
         </section>
       ))}
 
-      {(data.overdraftRisk.level === "high" ||
-        data.overdraftRisk.level === "medium") && (
-        <section
-          className={`card alert-card${data.overdraftRisk.level === "high" ? " high" : ""}`}
-        >
-          <strong>
-            {data.overdraftRisk.alreadyNegative
-              ? "עומס משיכת יתר"
-              : "סיכון מינוס"}
-          </strong>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            {data.overdraftRisk.messageHe}
-          </p>
+      {(data.attention || []).length > 0 && (
+        <section className="card" aria-label="מסקנות לחודש">
+          <h2 style={{ marginTop: 0, marginBottom: "0.65rem" }}>
+            מסקנות לחודש
+          </h2>
+          {(data.attention || [])
+            .slice(0, showDetails ? undefined : 2)
+            .map((item) => {
+              const conclusion = item.conclusionHe || item.titleHe;
+              const meaning = item.meaningHe || item.bodyHe;
+              return (
+                <div
+                  key={item.id}
+                  className={`insight-item${item.severity === "high" ? " insight-item-high" : ""}`}
+                >
+                  <div className="insight-block">
+                    <strong className="insight-conclusion">{conclusion}</strong>
+                    <p className="insight-meaning muted">{meaning}</p>
+                    {item.moneyLineHe ? (
+                      <p className="insight-money">{item.moneyLineHe}</p>
+                    ) : null}
+                    <div className="clarity-actions" style={{ marginBottom: 0 }}>
+                      <Link className="btn secondary" href={item.href}>
+                        {item.ctaHe}
+                      </Link>
+                      {item.alertId ? (
+                        <button
+                          className="btn quiet"
+                          type="button"
+                          onClick={() =>
+                            snooze(item.alertId!).catch(() => undefined)
+                          }
+                        >
+                          לא עכשיו
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
         </section>
       )}
 
+      {showDetails && (
+      <div className="clarity-details">
       {b && (
         <section className="card budget-flow">
           <h2 style={{ marginTop: 0, marginBottom: "0.65rem" }}>
@@ -361,15 +648,6 @@ function DashboardInner() {
         </span>
         <span>
           שלמות <strong>{data.completeness}%</strong>
-        </span>
-        <span className={`badge ${riskClass}`}>
-          {data.overdraftRisk.alreadyNegative
-            ? "מינוס פעיל"
-            : data.overdraftRisk.level === "high"
-              ? "סיכון מינוס"
-              : data.overdraftRisk.level === "medium"
-                ? "נזילות דקה"
-                : "תזרים יציב"}
         </span>
       </div>
 
@@ -439,27 +717,72 @@ function DashboardInner() {
         </section>
       )}
 
-      {data.alerts[0] && (
-        <section
-          className={`card alert-card${data.alerts[0].severity === "high" ? " high" : ""}`}
-        >
+      <section className="card">
           <div className="list-row" style={{ border: "none", padding: 0 }}>
-            <div>
-              <strong>{data.alerts[0].titleHe}</strong>
-              <div className="muted">{data.alerts[0].bodyHe}</div>
+            <div className="liquidity-hero" style={{ gap: "0.1rem" }}>
+              <span className="muted liquidity-label">אשראי והלוואות</span>
+              <strong style={{ fontSize: "1.25rem" }}>
+                {formatIls(data.debtsSummary?.principalTotal ?? 0)}
+              </strong>
             </div>
-            <button
-              className="btn secondary"
-              type="button"
-              onClick={() =>
-                dismiss(data.alerts[0].id).catch(() => undefined)
-              }
-            >
-              סגור
-            </button>
+            <Link className="btn secondary" href={`/app/debts?month=${month}`}>
+              לפירוט ←
+            </Link>
           </div>
         </section>
-      )}
+
+      {data.emergencyCushion ? (
+        <section className="card">
+          <div className="list-row" style={{ border: "none", paddingTop: 0 }}>
+            <h2 style={{ margin: 0 }}>רזרבה להפתעות</h2>
+            <Link href={`/app/goals?month=${month}`}>ליעדים ←</Link>
+          </div>
+          <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.88rem" }}>
+            {data.emergencyCushion.full
+              ? "הרזרבה מלאה — אפשר להפנות פנוי ליעדים אחרים."
+              : "סכום שמפרידים מהשוטף כדי לא לחזור למינוס כשמשהו נשבר."}
+          </p>
+          <div
+            style={{
+              height: 8,
+              borderRadius: 999,
+              background: "var(--bg-soft)",
+              overflow: "hidden",
+              marginTop: "0.55rem",
+            }}
+          >
+            <div
+              style={{
+                width: `${data.emergencyCushion.progressPct}%`,
+                height: "100%",
+                background: "var(--accent, #1a7a66)",
+              }}
+            />
+          </div>
+          <p className="muted" style={{ margin: "0.45rem 0 0", fontSize: "0.85rem" }}>
+            {data.emergencyCushion.full
+              ? `הושלם · ${formatIls(data.emergencyCushion.targetAmount)}`
+              : `${formatIls(data.emergencyCushion.currentAmount)} מתוך ${formatIls(data.emergencyCushion.targetAmount)}${
+                  data.emergencyCushion.remaining != null &&
+                  data.emergencyCushion.remaining > 0
+                    ? ` · נשאר ${formatIls(data.emergencyCushion.remaining)}`
+                    : ""
+                }`}
+          </p>
+        </section>
+      ) : data.reservePrompt ? (
+        <section className="card goals-cushion-cta">
+          <div>
+            <strong>רזרבה להפתעות</strong>
+            <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+              יש נותר החודש — כדאי להתחיל סכום קטן להגנה מפני הפתעות.
+            </p>
+          </div>
+          <Link className="btn" href={`/app/goals?month=${month}&reserve=1`}>
+            להתחיל רזרבה
+          </Link>
+        </section>
+      ) : null}
 
       {data.categoryBreakdown.length > 0 && (
         <section className="card">
@@ -467,26 +790,6 @@ function DashboardInner() {
           <CategoryBars items={data.categoryBreakdown.slice(0, 6)} />
           <p style={{ marginBottom: 0 }}>
             <Link href={`/app/reports?month=${month}`}>למאזן המלא ←</Link>
-          </p>
-        </section>
-      )}
-
-      {data.recommendations[0] && (
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>המלצה</h2>
-          <h3 style={{ marginBottom: "0.3rem" }}>
-            {data.recommendations[0].titleHe}
-          </h3>
-          <p className="muted">{data.recommendations[0].bodyHe}</p>
-        </section>
-      )}
-
-      {data.patterns[0] && (
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>דפוס</h2>
-          <strong>{data.patterns[0].titleHe}</strong>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            {data.patterns[0].bodyHe}
           </p>
         </section>
       )}
@@ -607,6 +910,8 @@ function DashboardInner() {
       <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
         {data.freshness.noteHe}
       </p>
+      </div>
+      )}
     </div>
   );
 }

@@ -9,6 +9,12 @@ export type MonthFactsFixedItem = {
   expected: number;
   actual: number;
   status: BudgetItemStatus;
+  /** ACCOUNT (default) or CREDIT_CARD standing. */
+  payVia?: "ACCOUNT" | "CREDIT_CARD";
+  creditCardId?: string | null;
+  /** YYYY-MM — first month this commitment applies (null = from forever). */
+  startMonth?: string | null;
+  endMonth?: string | null;
 };
 
 /**
@@ -54,6 +60,15 @@ export type MonthFacts = {
     afterFixed: number;
     /** Signed leftover for the month. */
     leftover: number;
+  };
+  /**
+   * Liquid cash view (live checking vs obligations still due).
+   * Distinct from budget.leftover (monthly pie remainder).
+   */
+  liquidity: {
+    checkingBalanceNow: number;
+    reservedForObligations: number;
+    availableInPractice: number;
   };
   meta: {
     txCount: number;

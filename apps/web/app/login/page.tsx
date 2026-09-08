@@ -4,10 +4,11 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, setToken } from "@/lib/api";
+import { BrandLockup } from "@/components/BrandLockup";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("test4@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,7 +30,11 @@ export default function LoginPage() {
         res.user?.onboardingCompleted === false ? "/app/onboarding" : "/app",
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "לא הצלחנו להתחבר — בדקו את הפרטים ונסו שוב",
+      );
     } finally {
       setLoading(false);
     }
@@ -37,40 +42,49 @@ export default function LoginPage() {
 
   return (
     <main className="auth-shell">
-      <form
-        className="card"
-        onSubmit={onSubmit}
-        style={{ width: "min(420px, 100%)" }}
-      >
-        <h1>התחברות ל־MoneyTail</h1>
-        <label className="field">
-          <span>אימייל</span>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
-        </label>
-        <label className="field">
-          <span>סיסמה (אופציונלי)</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            placeholder="השאר ריק אם אין סיסמה"
-          />
-        </label>
-        {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-        <button className="btn" disabled={loading} type="submit">
-          {loading ? "מתחבר…" : "התחברות"}
-        </button>
-        <p className="muted">
-          אין חשבון? <Link href="/register">הרשמה</Link>
-        </p>
-      </form>
+      <a className="skip-link" href="#main-content">
+        דלגו לתוכן
+      </a>
+      <div className="auth-brand-plane" id="main-content">
+        <section className="auth-brand-copy">
+          <BrandLockup size="lg" onLight />
+          <p>שמחים שחזרתם — התמונה מחכה לכם.</p>
+        </section>
+        <form className="auth-panel" onSubmit={onSubmit}>
+          <h1 className="auth-panel-title">התחברות</h1>
+          <label className="field">
+            <span>אימייל</span>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+          </label>
+          <label className="field">
+            <span>סיסמה (אם הגדרתם)</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="אפשר גם להשאיר ריק"
+            />
+          </label>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button className="btn" disabled={loading} type="submit">
+            {loading ? "מתחברים…" : "היכנסו"}
+          </button>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            חדשים כאן? <Link href="/register">הצטרפות קצרה</Link>
+          </p>
+        </form>
+      </div>
     </main>
   );
 }

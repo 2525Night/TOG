@@ -23,8 +23,17 @@ export class TransactionsController {
   constructor(private readonly transactions: TransactionsService) {}
 
   @Get()
-  list(@CurrentUser() user: AuthUser, @Query("month") month?: string) {
-    return this.transactions.list(user.userId, month || undefined);
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query("month") month?: string,
+    @Query("loanId") loanId?: string,
+    @Query("creditCardId") creditCardId?: string,
+  ) {
+    return this.transactions.list(user.userId, {
+      month: month || undefined,
+      loanId: loanId || undefined,
+      creditCardId: creditCardId || undefined,
+    });
   }
 
   @Post()

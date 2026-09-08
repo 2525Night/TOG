@@ -73,6 +73,39 @@ export function checkMonthFactsInvariants(
     });
   }
 
+  const { liquidity } = facts;
+  if (liquidity.reservedForObligations < -EPS) {
+    fails.push({
+      code: "reserved_negative",
+      detail: `reserved=${liquidity.reservedForObligations}`,
+    });
+  }
+  if (
+    !near(
+      liquidity.availableInPractice,
+      liquidity.checkingBalanceNow - liquidity.reservedForObligations,
+    )
+  ) {
+    fails.push({
+      code: "available_in_practice",
+      detail: `available=${liquidity.availableInPractice} check=${liquidity.checkingBalanceNow} reserved=${liquidity.reservedForObligations}`,
+    });
+  }
+  if (!near(liquidity.checkingBalanceNow, facts.checkingBalanceNow)) {
+    fails.push({
+      code: "liquidity_balance_mismatch",
+      detail: `liquidity.checking=${liquidity.checkingBalanceNow} top=${facts.checkingBalanceNow}`,
+    });
+  }
+
+  const itemsActualSum = budget.fixed.items.reduce((s, i) => s + i.actual, 0);
+  if (!near(itemsActualSum, budget.fixed.actualTotal)) {
+    fails.push({
+      code: "fixed_items_ne_actual_total",
+      detail: `itemsSum=${round2(itemsActualSum)} actualTotal=${budget.fixed.actualTotal}`,
+    });
+  }
+
   return fails;
 }
 

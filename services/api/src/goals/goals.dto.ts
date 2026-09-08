@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsDateString,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -14,6 +15,10 @@ export class CreateGoalDto {
   @IsString()
   @MinLength(1)
   title!: string;
+
+  @IsOptional()
+  @IsIn(["GENERAL", "EMERGENCY"])
+  kind?: "GENERAL" | "EMERGENCY";
 
   @IsNumber()
   @Min(1)

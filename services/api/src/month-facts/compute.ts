@@ -17,6 +17,8 @@ export type MonthTxInput = {
   categoryKey: string;
   description?: string | null;
   merchantNorm?: string | null;
+  /** When CARD_SETTLEMENT — cash movement only; excluded from flows.expense */
+  economicRole?: string | null;
 };
 
 export type MonthCommitmentInput = {
@@ -26,7 +28,24 @@ export type MonthCommitmentInput = {
   expectedAmount: unknown;
   cadence: string;
   merchantNorm?: string | null;
+  payVia?: string | null;
+  creditCardId?: string | null;
+  startMonth?: string | null;
+  endMonth?: string | null;
 };
+
+function commitmentActiveInMonth(
+  c: { startMonth?: string | null; endMonth?: string | null },
+  month: string,
+) {
+  if (c.startMonth && /^\d{4}-\d{2}$/.test(c.startMonth) && month < c.startMonth) {
+    return false;
+  }
+  if (c.endMonth && /^\d{4}-\d{2}$/.test(c.endMonth) && month > c.endMonth) {
+    return false;
+  }
+  return true;
+}
 
 export type ComputeMonthFactsInput = {
   month: string;
@@ -40,6 +59,11 @@ export type ComputeMonthFactsInput = {
   /** Whether at least one active BANK (or fallback) account exists. */
   hasCheckingAccount?: boolean;
   computedAt?: Date;
+  /**
+   * Debt installments still due this month that are NOT already covered
+   * by a linked BudgetCommitment in fixed remaining.
+   */
+  extraObligationReserve?: number;
 };
 
 function round2(n: number) {
@@ -73,12 +97,16 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
     .filter((t) => t.direction === "INCOME")
     .reduce((s, t) => s + Number(t.amount), 0);
 
-  const expenseTxs = txs.filter((t) => t.direction === "EXPENSE");
+  const expenseTxs = txs.filter(
+    (t) =>
+      t.direction === "EXPENSE" && t.economicRole !== "CARD_SETTLEMENT",
+  );
 
   const budgetCommitments = commitments.filter(
     (c) =>
       c.categoryKey !== "goal_funding" &&
-      !(c.merchantNorm || "").startsWith("goal:"),
+      !(c.merchantNorm || "").startsWith("goal:") &&
+      commitmentActiveInMonth(c, month),
   );
 
   const expectedTotal = budgetCommitments.reduce((s, c) => {
@@ -120,6 +148,11 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
       expected: round2(expected),
       actual: round2(actual),
       status,
+      payVia:
+        c.payVia === "CREDIT_CARD" ? ("CREDIT_CARD" as const) : ("ACCOUNT" as const),
+      creditCardId: c.creditCardId ?? null,
+      startMonth: c.startMonth ?? null,
+      endMonth: c.endMonth ?? null,
     };
   });
 
@@ -149,15 +182,30 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
 
   const committedCats = new Set(budgetCommitments.map((c) => c.categoryKey));
   const extraFixed: MonthFactsFixedItem[] = [];
+  const orphanFixed: MonthFactsFixedItem[] = [];
   const byFixedCat: Record<string, number> = {};
+  const orphanByCat: Record<string, number> = {};
   for (const t of expenseTxs) {
     if (matchedTxIds.has(t.id)) continue;
     if (t.categoryKey === "goal_funding") continue;
     const nature = categoryNature(t.categoryKey, catExtras);
     if (nature !== "fixed" && nature !== "periodic") continue;
-    if (committedCats.has(t.categoryKey)) continue;
-    byFixedCat[t.categoryKey] =
-      (byFixedCat[t.categoryKey] || 0) + Number(t.amount);
+    const amt = Number(t.amount);
+    if (committedCats.has(t.categoryKey)) {
+      orphanByCat[t.categoryKey] = (orphanByCat[t.categoryKey] || 0) + amt;
+      continue;
+    }
+    byFixedCat[t.categoryKey] = (byFixedCat[t.categoryKey] || 0) + amt;
+  }
+  for (const [key, actual] of Object.entries(orphanByCat)) {
+    const label = categoryLabelHe(key, catExtras);
+    orphanFixed.push({
+      titleHe: `${label} — נוספות`,
+      categoryKey: key,
+      expected: 0,
+      actual: round2(actual),
+      status: "paid",
+    });
   }
   for (const [key, actual] of Object.entries(byFixedCat)) {
     extraFixed.push({
@@ -169,7 +217,7 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
     });
   }
 
-  const allFixedItems = [...items, ...extraFixed].sort(
+  const allFixedItems = [...items, ...orphanFixed, ...extraFixed].sort(
     (a, b) => b.actual - a.actual || b.expected - a.expected,
   );
 
@@ -183,6 +231,12 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
   const net = income - expense;
   const netAfterGoals = net - allocatedToGoals;
 
+  const checking = round2(checkingBalanceNow);
+  const remainingFixed = Math.max(0, expectedTotal - fixedActualTotal);
+  const extraReserve = Math.max(0, Number(input.extraObligationReserve || 0));
+  const reservedForObligations = round2(remainingFixed + extraReserve);
+  const availableInPractice = round2(checking - reservedForObligations);
+
   return {
     formulaVersion: MONTH_FACTS_FORMULA_VERSION,
     month,
@@ -190,7 +244,7 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
       start: start.toISOString(),
       end: end.toISOString(),
     },
-    checkingBalanceNow: round2(checkingBalanceNow),
+    checkingBalanceNow: checking,
     flows: {
       income: round2(income),
       expense: round2(expense),
@@ -220,6 +274,11 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
       },
       afterFixed: round2(afterFixed),
       leftover: round2(leftover),
+    },
+    liquidity: {
+      checkingBalanceNow: checking,
+      reservedForObligations,
+      availableInPractice,
     },
     meta: {
       txCount: txs.length,

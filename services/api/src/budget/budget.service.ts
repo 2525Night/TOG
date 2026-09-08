@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { categoryLabelHe, categoryNature } from "./nature";
@@ -22,6 +22,10 @@ export type BudgetSnapshot = {
       expected: number;
       actual: number;
       status: BudgetItemStatus;
+      payVia?: "ACCOUNT" | "CREDIT_CARD";
+      creditCardId?: string | null;
+      startMonth?: string | null;
+      endMonth?: string | null;
     }>;
   };
   flexible: {
@@ -75,8 +79,23 @@ export class BudgetService {
       startMonth?: string | null;
       endMonth?: string | null;
       untilGoal?: boolean;
+      payVia?: "ACCOUNT" | "CREDIT_CARD";
+      creditCardId?: string | null;
     },
   ) {
+    const payVia = body.payVia === "CREDIT_CARD" ? "CREDIT_CARD" : "ACCOUNT";
+    let creditCardId: string | null = null;
+    if (payVia === "CREDIT_CARD") {
+      if (!body.creditCardId) {
+        throw new BadRequestException("נא לבחור כרטיס להוראת קבע באשראי");
+      }
+      const card = await this.prisma.creditCard.findFirst({
+        where: { id: body.creditCardId, userId, active: true },
+      });
+      if (!card) throw new NotFoundException("כרטיס לא נמצא");
+      creditCardId = card.id;
+    }
+
     return this.prisma.budgetCommitment.create({
       data: {
         userId,
@@ -86,6 +105,8 @@ export class BudgetService {
         nature: body.nature || "FIXED",
         expectedAmount: new Prisma.Decimal(body.expectedAmount),
         cadence: body.cadence || "MONTHLY",
+        payVia,
+        creditCardId,
         anchorDay: body.anchorDay ?? null,
         startMonth: body.startMonth ?? null,
         endMonth: body.endMonth ?? null,

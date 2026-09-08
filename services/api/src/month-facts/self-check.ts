@@ -125,6 +125,40 @@ export function runMonthFactsSelfCheck() {
     assert(checkMonthFactsInvariants(facts).length === 0, "invariants deficit");
   }
 
+  // 4) Card settlement must not inflate expense
+  {
+    const facts = computeMonthFacts({
+      ...fixtureBase(),
+      txs: [
+        {
+          id: "1",
+          direction: "INCOME",
+          amount: 10000,
+          categoryKey: "salary",
+        },
+        {
+          id: "2",
+          direction: "EXPENSE",
+          amount: 300,
+          categoryKey: "food",
+          economicRole: "CARD_PURCHASE",
+        },
+        {
+          id: "3",
+          direction: "EXPENSE",
+          amount: 3000,
+          categoryKey: "other",
+          economicRole: "CARD_SETTLEMENT",
+        },
+      ],
+      commitments: [],
+      userCats: [],
+      flexibleCap: null,
+    });
+    assert(facts.flows.expense === 300, "settlement excluded from expense");
+    assert(checkMonthFactsInvariants(facts).length === 0, "invariants settlement");
+  }
+
   console.log("month-facts self-check: OK");
 }
 

@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { setToken } from "@/lib/api";
+import { BrandLockup } from "@/components/BrandLockup";
 import { appHref, useSelectedMonth } from "@/components/PeriodBar";
 
 const links = [
-  { href: "/app", label: "תמונת מצב" },
-  { href: "/app/money", label: "תנועות" },
-  { href: "/app/reports", label: "מאזן" },
-  { href: "/app/goals", label: "יעדים" },
+  { href: "/app", label: "תמונת מצב", ico: "◎" },
+  { href: "/app/money", label: "תנועות", ico: "⇄" },
+  { href: "/app/reports", label: "מאזן", ico: "▣" },
+  { href: "/app/debts", label: "אשראי והלוואות", ico: "◇" },
+  { href: "/app/goals", label: "יעדים", ico: "○" },
 ];
 
 type AppSidebarProps = {
@@ -30,9 +32,9 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
         onClick={onClose}
         aria-hidden={!open}
       />
-      <aside className={`sidebar${open ? " open" : ""}`}>
+      <aside className={`sidebar${open ? " open" : ""}`} aria-label="תפריט ראשי">
         <div className="brand">
-          Money<span>Tail</span>
+          <BrandLockup />
         </div>
         {!hideNav && (
           <nav className="sidebar-nav">
@@ -51,15 +53,19 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
                 }
                 onClick={onClose}
               >
-                {l.label}
+                <span className="nav-ico" aria-hidden="true">
+                  {l.ico}
+                </span>
+                <span>{l.label}</span>
               </Link>
             ))}
           </nav>
         )}
         {hideNav && <div style={{ flex: 1 }} />}
         <div className="sidebar-footer">
+          <div className="meta">Layered Clarity · בהירות + רגש</div>
           <button
-            className="btn"
+            className="btn quiet"
             type="button"
             onClick={() => {
               setToken(null);

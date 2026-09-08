@@ -11,6 +11,8 @@ export {
   monthKey,
   resolveMonthKey,
 } from "./compute";
+export { affectsCheckingBalance, countsAsCashSpend } from "./cash-role";
+export type { CashSpendTx } from "./cash-role";
 export {
   checkMonthFactsInvariants,
   assertMonthFactsInvariants,

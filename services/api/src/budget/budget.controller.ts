@@ -41,6 +41,9 @@ export class BudgetController {
       nature?: "FIXED" | "PERIODIC";
       cadence?: "MONTHLY" | "YEARLY";
       anchorDay?: number;
+      payVia?: "ACCOUNT" | "CREDIT_CARD";
+      creditCardId?: string | null;
+      startMonth?: string;
     },
   ) {
     return this.budget.createCommitment(user.userId, body);

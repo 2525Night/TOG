@@ -10,6 +10,7 @@ export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
   if (token) localStorage.setItem("mt_token", token);
   else localStorage.removeItem("mt_token");
+  invalidateApiCache();
 }
 
 async function parseError(res: Response) {
@@ -24,10 +25,29 @@ async function parseError(res: Response) {
   throw new Error(message);
 }
 
+/** Short TTL GET cache — collapses remount / StrictMode double-fetch. */
+const GET_TTL_MS = 4_000;
+const getCache = new Map<string, { at: number; data: unknown }>();
+
+export function invalidateApiCache(pathPrefix?: string) {
+  if (!pathPrefix) {
+    getCache.clear();
+    return;
+  }
+  for (const key of getCache.keys()) {
+    if (key.startsWith(pathPrefix)) getCache.delete(key);
+  }
+}
+
+function cacheKey(path: string, method: string) {
+  return `${method}:${path}`;
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = (options.method || "GET").toUpperCase();
   const token = getToken();
   const headers = new Headers(options.headers || {});
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
@@ -35,21 +55,40 @@ export async function api<T>(
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
+  if (method === "GET" && typeof window !== "undefined") {
+    const key = cacheKey(path, method);
+    const hit = getCache.get(key);
+    if (hit && Date.now() - hit.at < GET_TTL_MS) {
+      return hit.data as T;
+    }
+  }
+
   const res = await fetch(`${API_URL}/api${path}`, {
     ...options,
     headers,
   });
 
   if (!res.ok) await parseError(res);
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  if (res.status === 204) {
+    if (method !== "GET") invalidateApiCache();
+    return undefined as T;
+  }
+  const data = (await res.json()) as T;
+  if (method === "GET" && typeof window !== "undefined") {
+    getCache.set(cacheKey(path, method), { at: Date.now(), data });
+  } else if (method !== "GET") {
+    invalidateApiCache();
+  }
+  return data;
 }
 
 export async function apiUpload<T>(
   path: string,
   formData: FormData,
 ): Promise<T> {
-  return api<T>(path, { method: "POST", body: formData });
+  const result = await api<T>(path, { method: "POST", body: formData });
+  invalidateApiCache();
+  return result;
 }
 
 /** Download authenticated text/blob (e.g. CSV export). */

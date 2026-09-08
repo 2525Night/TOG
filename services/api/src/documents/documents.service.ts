@@ -95,6 +95,12 @@ export class DocumentsService {
     storageMode: "TEMPORARY" | "PERMANENT" = "TEMPORARY",
   ) {
     if (!file) throw new BadRequestException("לא הועלה קובץ");
+    const MAX_BYTES = 8 * 1024 * 1024;
+    if (file.size > MAX_BYTES || (file.buffer?.length ?? 0) > MAX_BYTES) {
+      throw new BadRequestException(
+        "הקובץ גדול מדי (מקסימום 8MB). העלו קובץ קטן יותר או CSV מצומצם.",
+      );
+    }
     const originalName = file.originalname || "upload";
     const mimeType = file.mimetype || "application/octet-stream";
     const kind = detectKind(originalName, mimeType);
@@ -167,9 +173,9 @@ export class DocumentsService {
         filePath: storageMode === "PERMANENT" ? filePath : null,
         rawText:
           storageMode === "TEMPORARY"
-            ? text.slice(0, 200_000)
-            : text.slice(0, 50_000),
-        draftJson: JSON.stringify(draft),
+            ? text.slice(0, 100_000)
+            : text.slice(0, 40_000),
+        draftJson: JSON.stringify(draft).slice(0, 1_500_000),
       },
     });
 

@@ -11,6 +11,9 @@ import { DocumentsModule } from "./documents/documents.module";
 import { BudgetModule } from "./budget/budget.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { MonthFactsModule } from "./month-facts/month-facts.module";
+import { LoansModule } from "./loans/loans.module";
+import { CreditCardsModule } from "./credit-cards/credit-cards.module";
+import { DebtsModule } from "./debts/debts.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -27,6 +30,9 @@ import { HealthController } from "./health.controller";
     BudgetModule,
     CategoriesModule,
     MonthFactsModule,
+    LoansModule,
+    CreditCardsModule,
+    DebtsModule,
   ],
   controllers: [HealthController],
 })

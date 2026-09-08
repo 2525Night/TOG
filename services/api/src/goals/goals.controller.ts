@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -47,6 +48,11 @@ export class GoalsController {
     @Body() dto: UpdateGoalDto,
   ) {
     return this.goals.update(user.userId, id, dto);
+  }
+
+  @Delete(":id")
+  remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
+    return this.goals.remove(user.userId, id);
   }
 
   @Post(":id/apply-surplus")
