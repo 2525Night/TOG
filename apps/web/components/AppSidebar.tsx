@@ -37,39 +37,49 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
         className={`sidebar${open ? " open" : ""}`}
         aria-label="תפריט ראשי"
       >
-        <div className="brand">
-          <BrandLockup />
+        <div className="sidebar-head">
+          <div className="brand">
+            <BrandLockup size="sm" />
+          </div>
+          <button
+            type="button"
+            className="sidebar-close"
+            aria-label="סגירת תפריט"
+            onClick={onClose}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
+        <p className="sidebar-kicker">מסע הכסף · ניווט ראשי</p>
         {!hideNav && (
           <nav className="sidebar-nav">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={appHref(l.href, month)}
-                className={
-                  l.href === "/app"
-                    ? pathname === "/app"
-                      ? "active"
-                      : undefined
-                    : pathname.startsWith(l.href)
-                      ? "active"
-                      : undefined
-                }
-                onClick={onClose}
-              >
-                <span className="nav-ico" aria-hidden="true">
-                  {l.ico}
-                </span>
-                <span>{l.label}</span>
-              </Link>
-            ))}
+            {links.map((l) => {
+              const active =
+                l.href === "/app"
+                  ? pathname === "/app"
+                  : pathname.startsWith(l.href);
+              return (
+                <Link
+                  key={l.href}
+                  href={appHref(l.href, month)}
+                  className={active ? "active" : undefined}
+                  aria-current={active ? "page" : undefined}
+                  onClick={onClose}
+                >
+                  <span className="nav-ico" aria-hidden="true">
+                    {l.ico}
+                  </span>
+                  <span className="nav-label">{l.label}</span>
+                </Link>
+              );
+            })}
           </nav>
         )}
         {hideNav && <div style={{ flex: 1 }} />}
         <div className="sidebar-footer">
-          <div className="meta">MoneyTail5 · מסע הכסף</div>
+          <div className="meta">MoneyTail5</div>
           <button
-            className="btn quiet"
+            className="btn quiet sidebar-logout"
             type="button"
             onClick={() => {
               setToken(null);
