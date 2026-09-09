@@ -221,7 +221,11 @@ export function computeMonthFacts(input: ComputeMonthFactsInput): MonthFacts {
     (a, b) => b.actual - a.actual || b.expected - a.expected,
   );
 
-  const useExpected = fixedActualTotal < 0.01 && expectedTotal > 0;
+  // Prefer planned fixed while most commitments are still unpaid.
+  // Avoid flipping leftover to "ledger-only" after a single partial/miscategorized fixed txn.
+  const unpaidFixed = Math.max(0, expectedTotal - fixedActualTotal);
+  const useExpected =
+    expectedTotal > 0.01 && unpaidFixed >= expectedTotal * 0.5;
   const fixedUsed = useExpected ? expectedTotal : fixedActualTotal;
   const afterFixed = income - fixedUsed;
   const leftover = afterFixed - flexibleActual - allocatedToGoals;
