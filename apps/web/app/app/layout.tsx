@@ -146,13 +146,18 @@ export default function AppLayout({
             <BrandLockup size="sm" />
           </div>
           <button
-            className="icon-btn"
+            className="mobile-menu-btn"
             type="button"
-            aria-label="תפריט"
+            aria-label="תפריט ראשי"
             aria-expanded={menuOpen}
+            aria-controls="app-sidebar"
             onClick={() => setMenuOpen(true)}
           >
-            תפריט
+            <span className="mobile-menu-btn__bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
           </button>
         </div>
         <div

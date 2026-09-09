@@ -32,7 +32,11 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
         onClick={onClose}
         aria-hidden={!open}
       />
-      <aside className={`sidebar${open ? " open" : ""}`} aria-label="תפריט ראשי">
+      <aside
+        id="app-sidebar"
+        className={`sidebar${open ? " open" : ""}`}
+        aria-label="תפריט ראשי"
+      >
         <div className="brand">
           <BrandLockup />
         </div>
