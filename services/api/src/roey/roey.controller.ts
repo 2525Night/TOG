@@ -120,6 +120,14 @@ export class RoeyController {
     return this.roey.conversations(user.userId);
   }
 
+  @Get("conversations/:id")
+  conversation(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.roey.conversation(user.userId, id);
+  }
+
   @Delete("conversations/:id")
   deleteConversation(
     @CurrentUser() user: AuthUser,

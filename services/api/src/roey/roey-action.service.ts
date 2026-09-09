@@ -5,6 +5,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { SourceType } from "@prisma/client";
+import {
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+} from "@moneytail/shared";
+import { randomUUID } from "node:crypto";
 import { BudgetService } from "../budget/budget.service";
 import { GoalsService } from "../goals/goals.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -86,7 +91,10 @@ export class RoeyActionService {
     dto: ApproveRoeyActionDto,
   ) {
     const proposal = await this.requireProposal(userId, proposalId);
-    if (proposal.status !== "PENDING") {
+    if (proposal.status === "EXECUTED") {
+      return this.present(proposal);
+    }
+    if (proposal.status !== "PENDING" && proposal.status !== "APPROVED") {
       throw new ConflictException("ההצעה כבר טופלה");
     }
     if (proposal.expiresAt <= new Date()) {
@@ -112,49 +120,59 @@ export class RoeyActionService {
       );
     }
 
-    const claimed = await this.prisma.roeyActionProposal.updateMany({
-      where: { id: proposal.id, userId, status: "PENDING" },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date(),
-        previewJson: JSON.stringify(preview),
-        severity: preview.severity,
-        requiresDoubleConfirm: preview.requiresDoubleConfirm,
-      },
-    });
-    if (claimed.count !== 1) {
-      throw new ConflictException("ההצעה כבר טופלה");
+    if (proposal.status === "PENDING") {
+      const claimed = await this.prisma.roeyActionProposal.updateMany({
+        where: { id: proposal.id, userId, status: "PENDING" },
+        data: {
+          status: "APPROVED",
+          approvedAt: new Date(),
+          previewJson: JSON.stringify(preview),
+          severity: preview.severity,
+          requiresDoubleConfirm: preview.requiresDoubleConfirm,
+        },
+      });
+      if (claimed.count !== 1) {
+        const latest = await this.requireProposal(userId, proposalId);
+        if (latest.status === "EXECUTED") return this.present(latest);
+        throw new ConflictException("ההצעה כבר טופלה");
+      }
     }
 
     try {
-      const result = await this.execute(userId, proposal.type as RoeyActionType, payload);
-      const updated = await this.prisma.roeyActionProposal.update({
-        where: { id: proposal.id },
-        data: {
-          status: "EXECUTED",
-          executedAt: new Date(),
-          resultJson: JSON.stringify(result),
-          errorHe: null,
-        },
-      });
-      await this.audit(userId, "ROEY_ACTION_EXECUTED", {
+      await this.execute(
+        userId,
+        proposal.type as RoeyActionType,
+        payload,
+        proposal.id,
+      );
+      return this.present(await this.requireProposal(userId, proposal.id));
+    } catch (error) {
+      const incidentId = randomUUID();
+      console.error("Roey action failed", {
+        incidentId,
         proposalId: proposal.id,
         type: proposal.type,
-        severity: preview.severity,
+        error,
       });
-      return this.present(updated);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "ביצוע הפעולה נכשל";
-      await this.prisma.roeyActionProposal.update({
-        where: { id: proposal.id },
-        data: { status: "FAILED", errorHe: message.slice(0, 500) },
+      const failed = await this.prisma.roeyActionProposal.updateMany({
+        where: { id: proposal.id, userId, status: "APPROVED" },
+        data: {
+          status: "FAILED",
+          errorHe: `ביצוע הפעולה נכשל. מזהה תקלה: ${incidentId}`,
+        },
       });
+      if (failed.count === 0) {
+        const latest = await this.requireProposal(userId, proposal.id);
+        if (latest.status === "EXECUTED") return this.present(latest);
+      }
       await this.audit(userId, "ROEY_ACTION_FAILED", {
         proposalId: proposal.id,
         type: proposal.type,
+        incidentId,
       });
-      throw error;
+      throw new ConflictException(
+        `ביצוע הפעולה נכשל. מזהה תקלה: ${incidentId}`,
+      );
     }
   }
 
@@ -196,9 +214,20 @@ export class RoeyActionService {
           description: true,
           categoryKey: true,
           amount: true,
+          direction: true,
         },
       });
       if (!transaction) throw new NotFoundException("התנועה לא נמצאה");
+      if (transaction.direction === "TRANSFER") {
+        throw new BadRequestException(
+          "Roey אינו משנה קטגוריה של העברה בנקאית",
+        );
+      }
+      await this.assertCategory(
+        userId,
+        payload.categoryKey,
+        transaction.direction,
+      );
       return {
         payload,
         preview: {
@@ -226,10 +255,12 @@ export class RoeyActionService {
       );
       const amount = requiredAmount(raw.amount);
       const bookedAt = requiredDate(raw.bookedAt);
+      const categoryKey = requiredString(raw.categoryKey, "קטגוריה");
+      await this.assertCategory(userId, categoryKey, direction);
       const payload: AddTransactionPayload = {
         direction,
         amount,
-        categoryKey: requiredString(raw.categoryKey, "קטגוריה"),
+        categoryKey,
         bookedAt,
         ...(optionalString(raw.description)
           ? { description: optionalString(raw.description) }
@@ -262,9 +293,11 @@ export class RoeyActionService {
       );
       const anchorDay =
         raw.anchorDay == null ? undefined : integerInRange(raw.anchorDay, 1, 31);
+      const categoryKey = requiredString(raw.categoryKey, "קטגוריה");
+      await this.assertCategory(userId, categoryKey, "EXPENSE");
       const payload: CreateCommitmentPayload = {
         titleHe: requiredString(raw.titleHe, "שם ההתחייבות"),
-        categoryKey: requiredString(raw.categoryKey, "קטגוריה"),
+        categoryKey,
         expectedAmount,
         cadence,
         ...(anchorDay ? { anchorDay } : {}),
@@ -295,11 +328,25 @@ export class RoeyActionService {
     const [goal, snapshot] = await Promise.all([
       this.prisma.goal.findFirst({
         where: { id: payload.goalId, userId },
-        select: { id: true, title: true },
+        select: {
+          id: true,
+          title: true,
+          targetAmount: true,
+          currentAmount: true,
+        },
       }),
       this.budget.snapshot(userId, payload.month),
     ]);
     if (!goal) throw new NotFoundException("היעד לא נמצא");
+    const goalRemaining = Math.max(
+      0,
+      Number(goal.targetAmount) - Number(goal.currentAmount),
+    );
+    if (payload.amount > goalRemaining + 0.01) {
+      throw new BadRequestException(
+        `ניתן להקצות עד ${formatIls(goalRemaining)} להשלמת היעד`,
+      );
+    }
     if (payload.amount > snapshot.leftover + 0.01) {
       throw new BadRequestException(
         `ניתן להקצות עד ${formatIls(Math.max(0, snapshot.leftover))} מהנותר`,
@@ -325,6 +372,7 @@ export class RoeyActionService {
     userId: string,
     type: RoeyActionType,
     payload: RoeyActionPayload,
+    proposalId: string,
   ) {
     if (type === "ADD_TRANSACTION") {
       const value = payload as AddTransactionPayload;
@@ -340,6 +388,7 @@ export class RoeyActionService {
         {
           sourceType: SourceType.CHAT,
           auditAction: "ROEY_TRANSACTION_CREATED",
+          proposalId,
         },
       );
     }
@@ -357,6 +406,7 @@ export class RoeyActionService {
         {
           sourceType: SourceType.CHAT,
           auditAction: "ROEY_COMMITMENT_CREATED",
+          proposalId,
         },
       );
     }
@@ -369,6 +419,7 @@ export class RoeyActionService {
         {
           sourceType: SourceType.CHAT,
           auditAction: "ROEY_TRANSACTION_CATEGORY_CHANGED",
+          proposalId,
         },
       );
     }
@@ -380,8 +431,28 @@ export class RoeyActionService {
       {
         sourceType: SourceType.CHAT,
         auditAction: "ROEY_GOAL_SURPLUS_APPLIED",
+        proposalId,
       },
     );
+  }
+
+  private async assertCategory(
+    userId: string,
+    categoryKey: string,
+    direction: "INCOME" | "EXPENSE",
+  ) {
+    const builtIn =
+      direction === "INCOME" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    if (builtIn.some((category) => category.key === categoryKey)) return;
+    const custom = await this.prisma.userCategory.findFirst({
+      where: { userId, key: categoryKey, direction },
+      select: { id: true },
+    });
+    if (!custom) {
+      throw new BadRequestException(
+        "הקטגוריה אינה קיימת או אינה מתאימה לכיוון התנועה",
+      );
+    }
   }
 
   private requireProposal(userId: string, id: string) {

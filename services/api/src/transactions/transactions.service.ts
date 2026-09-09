@@ -20,6 +20,7 @@ type DbClient = Prisma.TransactionClient | PrismaService;
 type TransactionWriteOptions = {
   sourceType?: SourceType;
   auditAction?: string;
+  proposalId?: string;
 };
 
 function balanceSignedDelta(
@@ -365,6 +366,20 @@ export class TransactionsService {
         },
       });
 
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              transactionId: created.id,
+              type: "ADD_TRANSACTION",
+            }),
+          },
+        });
+      }
+
       return created;
     });
 
@@ -517,6 +532,20 @@ export class TransactionsService {
             meta: JSON.stringify({
               transactionId: id,
               sourceType: options.sourceType ?? existing.sourceType,
+            }),
+          },
+        });
+      }
+
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              transactionId: row.id,
+              type: "CHANGE_TRANSACTION_CATEGORY",
             }),
           },
         });

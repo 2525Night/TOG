@@ -6,6 +6,7 @@ import {
   computeRoeyForecast,
 } from "./roey-forecast.service";
 import { deriveRoeyJourney } from "./roey-journey.service";
+import { classifyActionImpact } from "./roey-action.policy";
 
 const now = new Date("2026-09-09T12:00:00.000Z");
 
@@ -69,6 +70,19 @@ const lowConfidenceRisk = computeRoeyForecast({
 });
 assert.equal(lowConfidenceRisk.confidence, "LOW");
 assert.equal(classifyRoeyRisk(lowConfidenceRisk).severity, "WARNING");
+
+assert.deepEqual(classifyActionImpact(5_000, 4_500), {
+  severity: "INFO",
+  requiresDoubleConfirm: false,
+  alternativeHe: null,
+});
+assert.equal(classifyActionImpact(1_000, 300).severity, "WARNING");
+assert.deepEqual(classifyActionImpact(1_000, -200), {
+  severity: "CRITICAL",
+  requiresDoubleConfirm: true,
+  alternativeHe:
+    "להקטין את הסכום, לדחות את הפעולה או לצמצם התחייבות אחרת לפני האישור.",
+});
 
 const crypto = new RoeyCryptoService(
   new ConfigService({

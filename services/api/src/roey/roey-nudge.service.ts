@@ -62,7 +62,7 @@ export class RoeyNudgeService {
 
     if (built.risk.severity !== "INFO") {
       await this.upsertWithoutReopening(userId, {
-        key: `cashflow-risk-${month}`,
+        key: `cashflow-risk-${month}-${weekKey(new Date())}`,
         titleHe: built.risk.titleHe,
         bodyHe: built.risk.messageHe,
         severity: built.risk.severity,

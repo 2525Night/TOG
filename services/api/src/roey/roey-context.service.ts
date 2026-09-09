@@ -48,7 +48,7 @@ export class RoeyContextService {
       debtPrincipal: summary.debtsSummary.principalTotal,
       completeness: summary.completeness,
       signalsReliable,
-      market: market
+      market: market && !market.stale
         ? {
             policyRatePct: market.policyRate?.percent ?? null,
             annualCpiPct: market.cpi?.annualChangePct ?? null,

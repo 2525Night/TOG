@@ -6,10 +6,12 @@ import { PrismaService } from "../prisma/prisma.service";
 
 const SNAPSHOT_KEY = "ISRAEL_MARKET_OVERVIEW";
 const CACHE_MS = 6 * 60 * 60 * 1_000;
+const MAX_STALE_MS = 48 * 60 * 60 * 1_000;
 const USER_AGENT = "MoneyTail5/5.0 market-data";
 
 export type IsraelMarketSnapshot = {
   fetchedAt: string;
+  stale: boolean;
   policyRate: {
     percent: number;
     observedAt: string;
@@ -50,7 +52,7 @@ export class MarketDataService {
       cached &&
       Date.now() - cached.fetchedAt.getTime() < CACHE_MS
     ) {
-      return parseSnapshot(cached.payloadJson);
+      return { ...parseSnapshot(cached.payloadJson), stale: false };
     }
 
     const [rate, cpi, exchange] = await Promise.allSettled([
@@ -60,6 +62,7 @@ export class MarketDataService {
     ]);
     const snapshot: IsraelMarketSnapshot = {
       fetchedAt: new Date().toISOString(),
+      stale: false,
       policyRate: rate.status === "fulfilled" ? rate.value : null,
       cpi: cpi.status === "fulfilled" ? cpi.value : null,
       exchangeRates:
@@ -76,7 +79,12 @@ export class MarketDataService {
       !snapshot.cpi &&
       snapshot.exchangeRates.length === 0
     ) {
-      if (cached) return parseSnapshot(cached.payloadJson);
+      if (
+        cached &&
+        Date.now() - cached.fetchedAt.getTime() <= MAX_STALE_MS
+      ) {
+        return { ...parseSnapshot(cached.payloadJson), stale: true };
+      }
       throw new ServiceUnavailableException(
         "מקורות השוק הרשמיים אינם זמינים כרגע",
       );

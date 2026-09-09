@@ -85,6 +85,7 @@ export class BudgetService {
     options: {
       sourceType?: SourceType;
       auditAction?: string;
+      proposalId?: string;
     } = {},
   ) {
     const payVia = body.payVia === "CREDIT_CARD" ? "CREDIT_CARD" : "ACCOUNT";
@@ -100,39 +101,54 @@ export class BudgetService {
       creditCardId = card.id;
     }
 
-    const created = await this.prisma.budgetCommitment.create({
-      data: {
-        userId,
-        titleHe: body.titleHe,
-        categoryKey: body.categoryKey,
-        merchantNorm: body.merchantNorm || null,
-        nature: body.nature || "FIXED",
-        expectedAmount: new Prisma.Decimal(body.expectedAmount),
-        cadence: body.cadence || "MONTHLY",
-        payVia,
-        creditCardId,
-        anchorDay: body.anchorDay ?? null,
-        startMonth: body.startMonth ?? null,
-        endMonth: body.endMonth ?? null,
-        untilGoal: body.untilGoal ?? false,
-        sourceType: options.sourceType ?? SourceType.USER_INPUT,
-        userConfirmed: true,
-        active: true,
-      },
-    });
-    if (options.auditAction) {
-      await this.prisma.auditEvent.create({
+    return this.prisma.$transaction(async (db) => {
+      const created = await db.budgetCommitment.create({
         data: {
           userId,
-          action: options.auditAction,
-          meta: JSON.stringify({
-            commitmentId: created.id,
-            sourceType: created.sourceType,
-          }),
+          titleHe: body.titleHe,
+          categoryKey: body.categoryKey,
+          merchantNorm: body.merchantNorm || null,
+          nature: body.nature || "FIXED",
+          expectedAmount: new Prisma.Decimal(body.expectedAmount),
+          cadence: body.cadence || "MONTHLY",
+          payVia,
+          creditCardId,
+          anchorDay: body.anchorDay ?? null,
+          startMonth: body.startMonth ?? null,
+          endMonth: body.endMonth ?? null,
+          untilGoal: body.untilGoal ?? false,
+          sourceType: options.sourceType ?? SourceType.USER_INPUT,
+          userConfirmed: true,
+          active: true,
         },
       });
-    }
-    return created;
+      if (options.auditAction) {
+        await db.auditEvent.create({
+          data: {
+            userId,
+            action: options.auditAction,
+            meta: JSON.stringify({
+              commitmentId: created.id,
+              sourceType: created.sourceType,
+            }),
+          },
+        });
+      }
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              commitmentId: created.id,
+              type: "CREATE_COMMITMENT",
+            }),
+          },
+        });
+      }
+      return created;
+    });
   }
 
   async suggestions(userId: string) {

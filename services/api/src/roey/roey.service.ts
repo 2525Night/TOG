@@ -325,11 +325,26 @@ export class RoeyService {
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 20,
-      include: {
-        messages: { orderBy: { createdAt: "asc" }, take: 50 },
-      },
+      include: { _count: { select: { messages: true } } },
     });
     return rows.map((conversation) => ({
+      id: conversation.id,
+      titleHe: conversation.titleHe,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+      messageCount: conversation._count.messages,
+    }));
+  }
+
+  async conversation(userId: string, conversationId: string) {
+    const conversation = await this.prisma.roeyConversation.findFirst({
+      where: { id: conversationId, userId },
+      include: {
+        messages: { orderBy: { createdAt: "asc" }, take: 100 },
+      },
+    });
+    if (!conversation) throw new NotFoundException("השיחה לא נמצאה");
+    return {
       id: conversation.id,
       titleHe: conversation.titleHe,
       createdAt: conversation.createdAt,
@@ -343,7 +358,7 @@ export class RoeyService {
         createdAt: message.createdAt,
         payload: safeJson(message.payloadJson),
       })),
-    }));
+    };
   }
 
   async deleteConversation(userId: string, conversationId: string) {

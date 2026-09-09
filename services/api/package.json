@@ -9,6 +9,7 @@
     "start": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "test:month-facts": "npx ts-node --transpile-only src/month-facts/self-check.ts",
