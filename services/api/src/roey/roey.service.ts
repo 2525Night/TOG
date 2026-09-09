@@ -209,7 +209,7 @@ export class RoeyService {
   }
 
   async chat(userId: string, dto: RoeyChatDto): Promise<RoeyChatResponse> {
-    this.rateLimit(userId, "chat", 12, 60_000);
+    this.rateLimit(userId, "chat", 40, 60_000);
     const userMessage = dto.message.trim();
     if (this.containsLikelySecret(userMessage)) {
       throw new BadRequestException(
@@ -251,11 +251,8 @@ export class RoeyService {
       })),
     });
     const { built } = turn;
-    const modelOutput = turn.output;
-    const output =
-      modelOutput && this.numbersAreGrounded(modelOutput, built.context)
-        ? modelOutput
-        : this.fallbackOutput(built);
+    // Orchestrator already grounded/sanitized the model output.
+    const output = turn.output ?? this.fallbackOutput(built);
     if (built.forecast.confidence === "LOW") output.confidence = "LOW";
 
     const persistedConversationId = memoryEnabled

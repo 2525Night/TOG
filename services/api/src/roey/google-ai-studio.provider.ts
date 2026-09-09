@@ -103,7 +103,7 @@ export class GoogleAiStudioProvider {
         config: {
           systemInstruction: ROEY_SYSTEM_PROMPT,
           temperature: 0.2,
-          maxOutputTokens: 900,
+          maxOutputTokens: 4096,
           httpOptions: { timeout: 25_000 },
         },
       });

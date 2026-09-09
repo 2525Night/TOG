@@ -12,6 +12,9 @@ export function configureMoneyTailApp(app: INestApplication) {
       "http://localhost:3002",
       "http://127.0.0.1:3005",
       "http://127.0.0.1:3002",
+      // Android emulator → host loopback
+      "http://10.0.2.2:3005",
+      "http://10.0.2.2:3002",
       "capacitor://localhost",
       "http://localhost",
       "https://moneytail-web.vercel.app",

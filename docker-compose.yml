@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: moneytail
       POSTGRES_DB: moneytail
     ports:
-      - "55432:5432"
+      # 55432 is often reserved by Windows/Hyper-V; use 5435 locally.
+      - "5435:5432"
     volumes:
       - moneytail_pg:/var/lib/postgresql/data
     healthcheck:

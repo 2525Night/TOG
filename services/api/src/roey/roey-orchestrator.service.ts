@@ -261,12 +261,11 @@ export class RoeyOrchestratorService {
         where: { id: run.id },
         data: { modelCalls: 1 },
       });
-      const output =
-        modelOutput &&
-        !contradictsCapabilities(modelOutput, factPack) &&
-        numbersAreGrounded(modelOutput, factPack)
-          ? modelOutput
-          : safeCapabilityFallback(built.journey.messageHe);
+      const output = resolveGroundedOutput(
+        modelOutput,
+        factPack,
+        built.journey.messageHe,
+      );
       const citations = inferCitations(output, factPack);
       await this.complete(run.id, citations);
       await this.reconciliation
@@ -417,7 +416,12 @@ export function classifyRoeyIntent(message: string): RoeyIntent {
   ) {
     return "VULNERABILITY";
   }
-  if (/מניה|השקעה|לקנות.*נייר|מס|משפט|עורך דין|ביטוח.*כדאי/i.test(message)) {
+  // Tax/invest/legal only — never bare "מס" (false-positive on מסעדות).
+  if (
+    /מניה|השקע(?:ה|ות)|לקנות.*נייר|מס(?:ים| הכנסה| ערך מוסף|\s*מע["״]?מ)|עורך דין|ייעוץ משפטי|ביטוח.*כדאי/i.test(
+      message,
+    )
+  ) {
     return "REGULATED";
   }
   if (/לא נכון|טעות|חולק|ערעור|תתקן.*יתרה|למה.*לא תואם/i.test(message)) {
@@ -426,8 +430,18 @@ export function classifyRoeyIntent(message: string): RoeyIntent {
   if (/תוסיף|תעדכן|תשנה|תיצור|תקצה|תרשום|בצע|תבצע/i.test(message)) {
     return "ACTION";
   }
-  if (/מטרה|תוכנית|תכנית|יעד|מסלול|צעד הבא/i.test(message)) return "PLAN";
-  if (/מה יקרה|תרחיש|אם.*אז|אפשרויות|להשוות/i.test(message)) return "EXPLORE";
+  if (
+    /לבנות תוכנית|תוכנית ל|תכנית ל|מטרה שלי|מסלול ל|תכנון פיננסי|לבנות מסלול/i.test(
+      message,
+    )
+  ) {
+    return "PLAN";
+  }
+  if (
+    /מה יקרה|מה אם|תרחיש|אם.*אז|אפשרויות|להשוות|אבטל|אוותר על/i.test(message)
+  ) {
+    return "EXPLORE";
+  }
   return "EXPLAIN";
 }
 
@@ -470,11 +484,9 @@ function contradictsCapabilities(
       capability.id === "moneytail.bank-sync" &&
       capability.mode === "UNAVAILABLE",
   );
-  return (
-    bankUnavailable &&
-    /(?:מסונכרן|מתעדכן|קיבלנו|מקבלת|משכנו).{0,30}(?:מהבנק|מהבנקים)/i.test(
-      output.messageHe,
-    )
+  if (!bankUnavailable) return false;
+  return /(?:מסונכרן|מתעדכן|קיבלנו|מקבלת|משכנו).{0,30}(?:מהבנק|מהבנקים)|(?:חבר|תחבר|לחיבור|סנכרן|תרענן).{0,24}(?:בנק|חשבון הבנק)/i.test(
+    output.messageHe,
   );
 }
 
@@ -485,21 +497,50 @@ function detectFalseCapabilityClaim(message: string) {
   return null;
 }
 
-function safeCapabilityFallback(journeyMessage: string): RoeyAgentOutput {
+function resolveGroundedOutput(
+  modelOutput: RoeyAgentOutput | null,
+  pack: RoeyFactPack,
+  journeyMessage: string,
+): RoeyAgentOutput {
+  if (!modelOutput) {
+    return softCapabilityFallback(journeyMessage);
+  }
+  if (contradictsCapabilities(modelOutput, pack)) {
+    return {
+      messageHe:
+        "אין כרגע חיבור אוטומטי לבנק ב-MoneyTail. הצעד המעשי הוא להוסיף תנועה אחת ידנית מתמונת המצב או ממסך התנועות.",
+      recommendationHe: "לרשום הוצאה או הכנסה אמיתית אחת מהימים האחרונים.",
+      alternativesHe: ["לפתוח תנועות", "לבדוק את הזמין בפועל"],
+      questionHe: "איזו תנועה הכי קל לך להוסיף עכשיו?",
+      confidence: "HIGH",
+    };
+  }
+  if (moneyClaimsAreGrounded(modelOutput, pack)) {
+    return modelOutput;
+  }
+  const sanitized = sanitizeUngroundedMoney(modelOutput, pack);
+  if (sanitized.messageHe.trim().length >= 24) {
+    return { ...sanitized, confidence: "LOW" };
+  }
+  return softCapabilityFallback(journeyMessage);
+}
+
+function softCapabilityFallback(journeyMessage: string): RoeyAgentOutput {
   return {
-    messageHe: `לא הצלחתי לאמת את התשובה מול היכולות והעובדות הזמינות. ${journeyMessage}`,
-    recommendationHe: null,
-    alternativesHe: [],
-    questionHe: "אפשר לנסח את השאלה בצורה ממוקדת יותר?",
+    messageHe: `אענה בזהירות כי חלק מהמספרים לא אומתו מול הנתונים ב-MoneyTail. ${journeyMessage}`,
+    recommendationHe: "להוסיף או לעדכן תנועה אחת אמיתית כדי לחדד את התמונה.",
+    alternativesHe: ["לבדוק את תמונת המצב", "לפתוח את כרטיס הפעולות"],
+    questionHe: "מה תרצה לבדוק קודם — יתרה, הוצאות או הצעד הבא?",
     confidence: "LOW",
   };
 }
 
-function numbersAreGrounded(
+/** Only money-like amounts must match facts; small conversational numbers are free. */
+function moneyClaimsAreGrounded(
   output: RoeyAgentOutput,
   pack: RoeyFactPack,
 ) {
-  const claimed = extractNumbers(
+  const claimed = extractMoneyLikeNumbers(
     [
       output.messageHe,
       output.recommendationHe,
@@ -510,18 +551,65 @@ function numbersAreGrounded(
       .join(" "),
   );
   if (claimed.length === 0) return true;
+  const allowed = allowedMoneySet(pack);
+  return claimed.every((value) => isAllowedMoney(value, allowed));
+}
+
+function sanitizeUngroundedMoney(
+  output: RoeyAgentOutput,
+  pack: RoeyFactPack,
+): RoeyAgentOutput {
+  const allowed = allowedMoneySet(pack);
+  const clean = (text: string | null) => {
+    if (!text) return text;
+    return text
+      .split(/(?<=[.!?…]|\n)/)
+      .filter((sentence) => {
+        const money = extractMoneyLikeNumbers(sentence);
+        return money.every((value) => isAllowedMoney(value, allowed));
+      })
+      .join("")
+      .trim();
+  };
+  return {
+    ...output,
+    messageHe: clean(output.messageHe) || output.messageHe.slice(0, 180),
+    recommendationHe: clean(output.recommendationHe),
+    alternativesHe: output.alternativesHe
+      .map((item) => clean(item))
+      .filter((item): item is string => Boolean(item && item.length > 0)),
+    questionHe: clean(output.questionHe),
+  };
+}
+
+function allowedMoneySet(pack: RoeyFactPack) {
   const allowed = new Set<number>([0, 1, 2, 3, 30, 60, 90, 100, 365]);
   for (const fact of pack.facts) {
     if (typeof fact.value === "number") allowed.add(fact.value);
     for (const value of extractNumbers(fact.displayHe)) allowed.add(value);
   }
-  return claimed.every((value) =>
-    [...allowed].some(
-      (source) =>
-        Math.abs(value - source) <= Math.max(0.05, Math.abs(source) * 0.01) ||
-        value === Math.round(source),
-    ),
+  return allowed;
+}
+
+function isAllowedMoney(value: number, allowed: Set<number>) {
+  return [...allowed].some(
+    (source) =>
+      Math.abs(value - source) <= Math.max(0.05, Math.abs(source) * 0.01) ||
+      value === Math.round(source),
   );
+}
+
+function extractMoneyLikeNumbers(value: string) {
+  const moneyTagged = [
+    ...value.matchAll(
+      /(?:₪|ש["״]?ח\.?|NIS)\s*(-?\d[\d,]*(?:\.\d+)?)|(-?\d[\d,]*(?:\.\d+)?)\s*(?:₪|ש["״]?ח\.?)/gi,
+    ),
+  ]
+    .map((match) => Number((match[1] || match[2] || "").replace(/,/g, "")))
+    .filter(Number.isFinite);
+  if (moneyTagged.length > 0) return moneyTagged;
+  // Untagged amounts that look like money (not days/counts).
+  return extractNumbers(value).filter((n) => Math.abs(n) >= 50);
 }
 
 function extractNumbers(value: string) {
