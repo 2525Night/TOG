@@ -735,16 +735,18 @@ a,
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  width: 14px;
+  gap: 3.5px;
+  width: 15px;
+  flex-shrink: 0;
 }
 
 .mobile-menu-btn__bars i {
   display: block;
-  height: 1.5px;
+  height: 2px;
   border-radius: 999px;
   background: #f3f7fa;
-  opacity: 0.92;
+  opacity: 0.95;
+  box-shadow: 0 0 0.5px rgba(255, 255, 255, 0.35);
 }
 
 .mobile-menu-btn__bars i:nth-child(2) {
@@ -2340,8 +2342,20 @@ a,
   }
 
   .mobile-menu-btn {
-    width: 44px;
-    height: 44px;
+    min-height: 40px;
+    height: 40px;
+  }
+
+  .sidebar-nav {
+    gap: 0.2rem;
+  }
+
+  .sidebar-nav a {
+    padding: 0.62rem 0.8rem;
+  }
+
+  .sidebar .brand {
+    padding-bottom: 0.15rem;
   }
 
   .container {
