@@ -71,7 +71,7 @@ export class GoogleAiStudioProvider {
     context: unknown,
     history: ProviderMessage[],
     userMessage: string,
-  ): Promise<RoeyAgentOutput> {
+  ): Promise<RoeyAgentOutput | null> {
     try {
       const contents: Content[] = [
         {
