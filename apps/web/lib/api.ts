@@ -25,6 +25,7 @@ export function setToken(token: string | null) {
 export async function hydrateToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   const local = getToken();
+  if (local) await writeIndexedToken(local);
   const indexed = local ? null : await readIndexedToken();
   if (indexed) {
     localStorage.setItem(TOKEN_KEY, indexed);
@@ -36,7 +37,6 @@ export async function hydrateToken(): Promise<string | null> {
     if (!Capacitor.isNativePlatform()) return local;
     const { Preferences } = await import("@capacitor/preferences");
     if (local) {
-      await writeIndexedToken(local);
       await Preferences.set({ key: NATIVE_TOKEN_KEY, value: local });
       return local;
     }
