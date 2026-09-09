@@ -4129,6 +4129,115 @@ button.linkish:disabled {
     grid-area: actions;
     justify-content: flex-start;
   }
+
+  /* Phone: stack add-income/expense form — no horizontal crush */
+  .tx-draft-block {
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .tx-dense-row.draft,
+  .tx-dense-row.draft.with-date,
+  .tx-dense-row.draft.tx-draft-form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.85rem 0.9rem;
+    margin: 0;
+  }
+
+  .tx-draft-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tx-draft-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .tx-dense-row.draft .cell-input,
+  .tx-dense-row.draft .cat-combo,
+  .tx-dense-row.draft .cat-combo-input,
+  .tx-dense-row.draft .tx-draft-amt {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    box-sizing: border-box;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .tx-dense-row.draft .tx-dense-dir {
+    align-self: flex-start;
+  }
+
+  .tx-draft-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+    width: 100%;
+    min-width: 0 !important;
+    margin-top: 0.15rem;
+  }
+
+  .tx-draft-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tx-draft-hint {
+    font-size: 0.84rem;
+    line-height: 1.4;
+    padding-inline: 0.15rem;
+  }
+
+  .tx-pay-panel {
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .tx-pay-chips {
+    flex-wrap: wrap;
+  }
+
+  /* Compact empty note fields in the transaction list */
+  .tx-dense-row:not(.draft):not(.editing) .tx-dense-note:not(.has-note) .tx-note-input {
+    min-height: 0;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    opacity: 0.7;
+    background: transparent;
+  }
+
+  .tx-dense-row:not(.draft):not(.editing) .tx-dense-note:not(.has-note) {
+    max-height: 1.75rem;
+    overflow: hidden;
+  }
+
+  .money-actions-panel,
+  .money-actions {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .app-main,
+  .app-content {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
 }
 
 .cat-combo {
@@ -4354,6 +4463,94 @@ button.linkish:disabled {
 
 .tx-dense-row.draft.with-date {
   grid-template-columns: 7.2rem minmax(0, 1.35fr) 6.4rem minmax(7rem, 9rem) 6.25rem auto;
+}
+
+/* Clear stacked draft form (phone + desktop) — avoids crushed columns */
+.tx-dense-row.draft.tx-draft-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  padding: 0.85rem 0.95rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: none;
+}
+
+.tx-draft-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.tx-draft-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tx-dense-row.draft.tx-draft-form .cell-input,
+.tx-dense-row.draft.tx-draft-form .cat-combo,
+.tx-dense-row.draft.tx-draft-form .cat-combo-input,
+.tx-dense-row.draft.tx-draft-form .tx-draft-amt {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.tx-dense-row.draft.tx-draft-form .tx-dense-dir {
+  align-self: flex-start;
+}
+
+.tx-draft-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.1rem;
+}
+
+.tx-draft-actions .btn {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+}
+
+@media (min-width: 721px) {
+  .tx-dense-row.draft.tx-draft-form {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 9rem) minmax(0, 1.4fr) minmax(7rem, 9rem);
+    grid-template-areas:
+      "date desc amt"
+      "type cat cat"
+      "actions actions actions";
+    align-items: end;
+    gap: 0.65rem 0.75rem;
+  }
+
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-field:nth-child(1) {
+    grid-area: date;
+  }
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-field:nth-child(2) {
+    grid-area: desc;
+  }
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-field:nth-child(3) {
+    grid-area: type;
+  }
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-field:nth-child(4) {
+    grid-area: cat;
+  }
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-field:nth-child(5) {
+    grid-area: amt;
+  }
+  .tx-dense-row.draft.tx-draft-form > .tx-draft-actions {
+    grid-area: actions;
+  }
 }
 
 .tx-dense-row.draft .tx-dense-actions {

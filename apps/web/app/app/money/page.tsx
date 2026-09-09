@@ -2288,79 +2288,100 @@ function MoneyInner() {
             <>
             {addDraft && (
               <div className="tx-draft-block">
-              <p className="muted tx-draft-hint" style={{ margin: "0 0 0.45rem" }}>
+              <p className="muted tx-draft-hint">
                 {addDraft.mode === "income"
-                  ? "סכום · מאיפה · קטגוריה — ואז שמירה"
-                  : "סכום · עבור מה · קטגוריה — ואז שמירה. תשלום מהעו״ש כברירת מחדל."}
+                  ? "מלאו סכום וקטגוריה — ואז שמירה"
+                  : "מלאו סכום וקטגוריה — תשלום מהעו״ש כברירת מחדל"}
               </p>
               <div
-                className={`tx-dense-row draft with-date ${
+                className={`tx-dense-row draft with-date tx-draft-form ${
                   addDraft.mode === "income" ? "in" : "out"
                 }`}
               >
-                <input
-                  type="date"
-                  className="cell-input"
-                  value={addDraft.bookedAt}
-                  onChange={(e) =>
-                    setAddDraft({ ...addDraft, bookedAt: e.target.value })
-                  }
-                  aria-label="תאריך"
-                />
-                <input
-                  className="cell-input"
-                  value={addDraft.description}
-                  onChange={(e) =>
-                    setAddDraft({ ...addDraft, description: e.target.value })
-                  }
-                  placeholder="עבור מה"
-                  aria-label="עבור מה"
-                />
-                <span
-                  className={`tx-dense-dir ${
-                    addDraft.mode === "income" ? "in" : "out"
-                  }${
-                    addDraft.mode === "expense"
-                      ? resolveNature(addDraft.categoryKey) === "fixed" ||
-                        resolveNature(addDraft.categoryKey) === "periodic"
-                        ? " nature-fixed"
-                        : " nature-variable"
-                      : ""
-                  }`}
-                >
-                  {addDraft.mode === "income"
-                    ? "הכנסה"
-                    : resolveNature(addDraft.categoryKey) === "fixed" ||
-                        resolveNature(addDraft.categoryKey) === "periodic"
-                      ? "הוצאה קבועה"
-                      : "הוצאה משתנה"}
-                </span>
-                <CategoryCombobox
-                  options={addCategories}
-                  value={addDraft.categoryKey}
-                  onChange={(key) =>
-                    setAddDraft({ ...addDraft, categoryKey: key })
-                  }
-                  onCreate={createUserCategory}
-                  disabled={busy}
-                />
-                <input
-                  className="cell-input tx-draft-amt"
-                  type="number"
-                  inputMode="decimal"
-                  min="0.01"
-                  step="0.01"
-                  value={addDraft.amount}
-                  onChange={(e) =>
-                    setAddDraft({ ...addDraft, amount: e.target.value })
-                  }
-                  placeholder="סכום"
-                  aria-label="סכום"
-                />
-                <div className="tx-dense-actions open">
+                <label className="tx-draft-field">
+                  <span className="tx-draft-label">תאריך</span>
+                  <input
+                    type="date"
+                    className="cell-input tx-draft-date"
+                    value={addDraft.bookedAt}
+                    onChange={(e) =>
+                      setAddDraft({ ...addDraft, bookedAt: e.target.value })
+                    }
+                    aria-label="תאריך"
+                  />
+                </label>
+                <label className="tx-draft-field tx-draft-field-grow">
+                  <span className="tx-draft-label">
+                    {addDraft.mode === "income" ? "מאיפה" : "עבור מה"}
+                  </span>
+                  <input
+                    className="cell-input tx-draft-desc"
+                    value={addDraft.description}
+                    onChange={(e) =>
+                      setAddDraft({ ...addDraft, description: e.target.value })
+                    }
+                    placeholder={
+                      addDraft.mode === "income" ? "למשל משכורת" : "למשל קפה"
+                    }
+                    aria-label={
+                      addDraft.mode === "income" ? "מאיפה" : "עבור מה"
+                    }
+                  />
+                </label>
+                <div className="tx-draft-field">
+                  <span className="tx-draft-label">סוג</span>
+                  <span
+                    className={`tx-dense-dir ${
+                      addDraft.mode === "income" ? "in" : "out"
+                    }${
+                      addDraft.mode === "expense"
+                        ? resolveNature(addDraft.categoryKey) === "fixed" ||
+                          resolveNature(addDraft.categoryKey) === "periodic"
+                          ? " nature-fixed"
+                          : " nature-variable"
+                        : ""
+                    }`}
+                  >
+                    {addDraft.mode === "income"
+                      ? "הכנסה"
+                      : resolveNature(addDraft.categoryKey) === "fixed" ||
+                          resolveNature(addDraft.categoryKey) === "periodic"
+                        ? "הוצאה קבועה"
+                        : "הוצאה משתנה"}
+                  </span>
+                </div>
+                <label className="tx-draft-field tx-draft-field-grow">
+                  <span className="tx-draft-label">קטגוריה</span>
+                  <CategoryCombobox
+                    options={addCategories}
+                    value={addDraft.categoryKey}
+                    onChange={(key) =>
+                      setAddDraft({ ...addDraft, categoryKey: key })
+                    }
+                    onCreate={createUserCategory}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="tx-draft-field">
+                  <span className="tx-draft-label">סכום</span>
+                  <input
+                    className="cell-input tx-draft-amt"
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    value={addDraft.amount}
+                    onChange={(e) =>
+                      setAddDraft({ ...addDraft, amount: e.target.value })
+                    }
+                    placeholder="0"
+                    aria-label="סכום"
+                  />
+                </label>
+                <div className="tx-dense-actions open tx-draft-actions">
                   <button
                     type="button"
-                    className="linkish"
+                    className="btn"
                     disabled={busy}
                     onClick={() => void saveAddDraft()}
                   >
@@ -2368,7 +2389,7 @@ function MoneyInner() {
                   </button>
                   <button
                     type="button"
-                    className="linkish muted"
+                    className="btn secondary"
                     disabled={busy}
                     onClick={cancelAddDraft}
                   >
