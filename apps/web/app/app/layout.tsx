@@ -158,6 +158,7 @@ export default function AppLayout({
               <i />
               <i />
             </span>
+            <span className="mobile-menu-btn__label">תפריט</span>
           </button>
         </div>
         <div
