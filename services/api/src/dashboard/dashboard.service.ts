@@ -200,9 +200,10 @@ export class DashboardService {
       },
       assistant: {
         name: "Roey",
-        available: false,
+        available: true,
+        href: "/app/roey",
         noteHe:
-          "רועי יהיה זמין כעוזר אופציונלי בשלב הבא — לא כמסך הראשי.",
+          "רועי זמין כמלווה פיננסי אופציונלי — תמונת המצב נשארת המסך הראשי.",
       },
     };
   }

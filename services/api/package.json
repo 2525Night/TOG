@@ -10,9 +10,11 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
-    "test:month-facts": "npx ts-node --transpile-only src/month-facts/self-check.ts"
+    "test:month-facts": "npx ts-node --transpile-only src/month-facts/self-check.ts",
+    "test:roey": "npx ts-node --transpile-only src/roey/self-check.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.21.0",
     "@moneytail/shared": "*",
     "@napi-rs/canvas": "^0.1.80",
     "@nestjs/common": "^11.1.6",

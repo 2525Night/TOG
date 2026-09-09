@@ -16,11 +16,17 @@ enum Role {
 
 enum AccountKind {
   CASH
-  /** Checking — the only kind used for עו״ש. */
+  /**
+   * Checking — the only kind used for עו״ש.
+   */
   BANK
-  /** @deprecated Use CreditCard model — blocked on create/update. */
+  /**
+   * @deprecated Use CreditCard model — blocked on create/update.
+   */
   CREDIT_CARD
-  /** @deprecated Use Loan model — blocked on create/update. */
+  /**
+   * @deprecated Use Loan model — blocked on create/update.
+   */
   LOAN
   INVESTMENT
   OTHER
@@ -46,29 +52,33 @@ enum SourceType {
 }
 
 model User {
-  id                   String   @id @default(cuid())
-  email                String   @unique
-  passwordHash         String
-  displayName          String?
-  role                 Role     @default(USER)
-  jurisdiction         String   @default("IL")
-  currency             String   @default("ILS")
-  onboardingCompleted  Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  passwordHash        String
+  displayName         String?
+  role                Role     @default(USER)
+  jurisdiction        String   @default("IL")
+  currency            String   @default("ILS")
+  onboardingCompleted Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  accounts     FinancialAccount[]
-  transactions Transaction[]
-  goals        Goal[]
-  auditEvents  AuditEvent[]
-  alerts       Alert[]
-  documents    Document[]
+  accounts          FinancialAccount[]
+  transactions      Transaction[]
+  goals             Goal[]
+  auditEvents       AuditEvent[]
+  alerts            Alert[]
+  documents         Document[]
   budgetCommitments BudgetCommitment[]
   budgetSettings    UserBudgetSettings?
   userCategories    UserCategory[]
   loans             Loan[]
   creditCards       CreditCard[]
   installmentPlans  InstallmentPlan[]
+  roeyProfile       RoeyProfile?
+  roeyAiConnection  RoeyAiConnection?
+  roeyConversations RoeyConversation[]
+  roeyMessages      RoeyMessage[]
 }
 
 model FinancialAccount {
@@ -122,11 +132,11 @@ model Transaction {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   account         FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  loan            Loan?            @relation(fields: [loanId], references: [id], onDelete: SetNull)
-  creditCard      CreditCard?      @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
-  installmentPlan InstallmentPlan? @relation(fields: [installmentPlanId], references: [id], onDelete: SetNull)
+  loan            Loan?             @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  creditCard      CreditCard?       @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  installmentPlan InstallmentPlan?  @relation(fields: [installmentPlanId], references: [id], onDelete: SetNull)
 
   @@index([userId, bookedAt])
   @@index([userId, categoryKey])
@@ -195,7 +205,9 @@ model CreditCard {
   provider           String?
   lastFour           String?
   creditLimit        Decimal   @default(0)
-  /** Manual / migrated balance owed on the card (utilization basis). */
+  /**
+   * Manual / migrated balance owed on the card (utilization basis).
+   */
   currentBalance     Decimal   @default(0)
   billingDay         Int?
   nextBillingDate    DateTime?
@@ -205,10 +217,10 @@ model CreditCard {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  linkedCommitment BudgetCommitment? @relation("CardLinkedCommitment", fields: [linkedCommitmentId], references: [id], onDelete: SetNull)
-  transactions     Transaction[]
-  installmentPlans InstallmentPlan[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedCommitment  BudgetCommitment?  @relation("CardLinkedCommitment", fields: [linkedCommitmentId], references: [id], onDelete: SetNull)
+  transactions      Transaction[]
+  installmentPlans  InstallmentPlan[]
   budgetCommitments BudgetCommitment[] @relation("CardPayVia")
 
   @@index([userId, active])
@@ -224,7 +236,9 @@ model InstallmentPlan {
   installmentCount   Int
   installmentAmount  Decimal
   chargedCount       Int      @default(0)
-  /** YYYY-MM — first charged month */
+  /**
+   * YYYY-MM — first charged month
+   */
   startMonth         String
   linkedPurchaseTxId String?
   active             Boolean  @default(true)
@@ -325,16 +339,26 @@ model BudgetCommitment {
   nature         CommitmentNature  @default(FIXED)
   expectedAmount Decimal
   cadence        CommitmentCadence @default(MONTHLY)
-  /** How the monthly amount is paid when recorded. */
+  /**
+   * How the monthly amount is paid when recorded.
+   */
   payVia         CommitmentPayVia  @default(ACCOUNT)
-  /** Required when payVia = CREDIT_CARD. */
+  /**
+   * Required when payVia = CREDIT_CARD.
+   */
   creditCardId   String?
   anchorDay      Int?
-  /** YYYY-MM — first month covered by a goal standing order. */
+  /**
+   * YYYY-MM — first month covered by a goal standing order.
+   */
   startMonth     String?
-  /** YYYY-MM — last month inclusive; null when open-ended / untilGoal. */
+  /**
+   * YYYY-MM — last month inclusive; null when open-ended / untilGoal.
+   */
   endMonth       String?
-  /** When true, standing runs until the linked goal is funded (endMonth ignored). */
+  /**
+   * When true, standing runs until the linked goal is funded (endMonth ignored).
+   */
   untilGoal      Boolean           @default(false)
   active         Boolean           @default(true)
   sourceType     SourceType        @default(USER_INPUT)
@@ -342,9 +366,9 @@ model BudgetCommitment {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  creditCard CreditCard?  @relation("CardPayVia", fields: [creditCardId], references: [id], onDelete: SetNull)
-  linkedLoans Loan[]      @relation("LoanLinkedCommitment")
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditCard  CreditCard?  @relation("CardPayVia", fields: [creditCardId], references: [id], onDelete: SetNull)
+  linkedLoans Loan[]       @relation("LoanLinkedCommitment")
   linkedCards CreditCard[] @relation("CardLinkedCommitment")
 
   @@index([userId, active])
@@ -362,15 +386,21 @@ model UserBudgetSettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-/** User-defined categories (key prefixed with custom:). */
+/**
+ * User-defined categories (key prefixed with custom:).
+ */
 model UserCategory {
   id        String   @id @default(cuid())
   userId    String
   key       String
   labelHe   String
-  /** fixed | variable | periodic */
+  /**
+   * fixed | variable | periodic
+   */
   nature    String   @default("variable")
-  /** EXPENSE | INCOME */
+  /**
+   * EXPENSE | INCOME
+   */
   direction String   @default("EXPENSE")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -381,3 +411,64 @@ model UserCategory {
   @@index([userId, direction])
 }
 
+model RoeyProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  primaryGoal      String?
+  tone             String   @default("BALANCED")
+  assertiveness    String   @default("ASSERTIVE")
+  notificationMode String   @default("IMPORTANT_ONLY")
+  memoryEnabled    Boolean  @default(true)
+  onboardingSeen   Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RoeyAiConnection {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  provider            String    @default("GOOGLE_AI_STUDIO")
+  encryptedCredential String
+  keyHint             String
+  modelId             String?
+  status              String    @default("CONNECTED")
+  lastValidatedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RoeyConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  titleHe   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages RoeyMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model RoeyMessage {
+  id             String   @id @default(cuid())
+  userId         String
+  conversationId String
+  role           String
+  contentHe      String
+  severity       String?
+  confidence     String?
+  sourcesJson    String?
+  modelId        String?
+  createdAt      DateTime @default(now())
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation RoeyConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([userId, createdAt])
+}

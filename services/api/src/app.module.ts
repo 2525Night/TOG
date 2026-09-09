@@ -14,6 +14,7 @@ import { MonthFactsModule } from "./month-facts/month-facts.module";
 import { LoansModule } from "./loans/loans.module";
 import { CreditCardsModule } from "./credit-cards/credit-cards.module";
 import { DebtsModule } from "./debts/debts.module";
+import { RoeyModule } from "./roey/roey.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -33,6 +34,7 @@ import { HealthController } from "./health.controller";
     LoansModule,
     CreditCardsModule,
     DebtsModule,
+    RoeyModule,
   ],
   controllers: [HealthController],
 })
