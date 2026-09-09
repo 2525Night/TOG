@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { BrandLockup } from "@/components/BrandLockup";
+import { RoeyLauncher } from "@/components/RoeyLauncher";
 import { api, getToken, setToken, invalidateApiCache } from "@/lib/api";
 
 type Me = {
@@ -169,6 +170,7 @@ export default function AppLayout({
           {children}
         </div>
       </div>
+      <RoeyLauncher />
     </div>
   );
 }
