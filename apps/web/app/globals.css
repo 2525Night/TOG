@@ -757,6 +757,127 @@ a,
   font-weight: 800;
 }
 
+.field-password {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+  align-items: stretch;
+}
+
+.field-password input {
+  min-width: 0;
+}
+
+.field-password-toggle {
+  min-height: 44px;
+  min-width: 4.25rem;
+  padding: 0 0.75rem;
+  border-radius: var(--mt-radius-sm);
+  border: 1px solid var(--mt-on-glass-border);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--mt-on-glass-text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.field-password-toggle[aria-pressed="true"] {
+  border-color: var(--mt-mint-deep);
+  color: var(--mt-mint-deep);
+}
+
+.auth-submit {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+}
+
+.auth-footer-links {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.auth-secondary {
+  width: 100%;
+  min-height: 44px;
+  justify-content: center;
+  text-align: center;
+}
+
+.auth-forgot {
+  margin: 0;
+  text-align: center;
+  font-size: 0.92rem;
+}
+
+.auth-forgot a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.auth-help-body {
+  margin: 0 0 0.75rem;
+  color: var(--mt-on-glass-mute);
+  line-height: 1.55;
+}
+
+.auth-help-list {
+  margin: 0 0 1.15rem;
+  padding-inline-start: 1.15rem;
+  color: var(--mt-on-glass-text);
+  line-height: 1.65;
+}
+
+.auth-help-list a {
+  color: var(--mt-mint-deep);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+@media (max-width: 859px) {
+  .auth-shell--phone {
+    align-items: stretch;
+    place-items: stretch;
+    padding: calc(1rem + env(safe-area-inset-top, 0px))
+      1rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .auth-shell--phone .auth-brand-plane {
+    width: 100%;
+    gap: 1.15rem;
+    margin: auto 0;
+  }
+
+  .auth-shell--phone .auth-brand-copy {
+    text-align: center;
+  }
+
+  .auth-shell--phone .auth-brand-copy .brand-lockup {
+    justify-content: center;
+    transform: scale(1.08);
+    transform-origin: center top;
+    margin-bottom: 0.55rem;
+  }
+
+  .auth-shell--phone .auth-brand-copy p {
+    margin-inline: auto;
+    font-size: 1.05rem;
+    max-width: 22rem;
+  }
+
+  .auth-shell--phone .auth-panel {
+    width: 100%;
+    padding: 1.35rem 1.15rem 1.45rem;
+  }
+
+  .auth-shell--phone .auth-panel-title {
+    font-size: 1.45rem;
+    text-align: center;
+  }
+}
+
 .auth-cta-row {
   display: flex;
   gap: 0.7rem;
