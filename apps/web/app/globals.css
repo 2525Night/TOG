@@ -6489,7 +6489,29 @@ button.linkish:disabled {
 .roey-page {
   display: grid;
   gap: 1rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding-bottom: 2rem;
+  overflow-x: clip;
+}
+
+.roey-page > *,
+.roey-page .app-page-header,
+.roey-page .app-page-header-main,
+.roey-page .app-page-header-copy,
+.roey-workspace,
+.roey-settings-grid {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.roey-page .mt-page-head {
+  overflow: hidden;
+}
+
+.roey-month-select {
+  max-width: 100%;
 }
 
 .roey-journey {
@@ -6889,6 +6911,59 @@ button.linkish:disabled {
 }
 
 @media (max-width: 560px) {
+  .roey-page .mt-page-head {
+    padding: 1rem;
+  }
+
+  .roey-page .app-page-header-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    gap: 0.8rem;
+  }
+
+  .roey-page .app-page-header-copy,
+  .roey-page .app-page-header-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .roey-page .app-page-header h1 {
+    margin-bottom: 0.35rem;
+    font-size: 2rem;
+  }
+
+  .roey-page .app-page-header-sub {
+    max-width: 100%;
+    font-size: 0.95rem;
+    overflow-wrap: anywhere;
+  }
+
+  .roey-month-select {
+    display: block;
+    width: 100%;
+  }
+
+  .roey-month-select .month-nav {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    width: 100%;
+    gap: 0.35rem;
+  }
+
+  .roey-month-select .month-select-quiet,
+  .roey-month-select .month-select-quiet select {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    text-align: center;
+  }
+
+  .roey-month-select .month-custom-pick {
+    display: none;
+  }
+
   .roey-launcher {
     left: max(0.8rem, env(safe-area-inset-left));
     bottom: max(0.8rem, env(safe-area-inset-bottom));
@@ -6929,6 +7004,35 @@ button.linkish:disabled {
 
   .roey-message {
     width: 94%;
+  }
+
+  .roey-journey,
+  .roey-connect-callout,
+  .roey-settings-grid .card {
+    padding: 1rem;
+    overflow: hidden;
+  }
+
+  .roey-journey > div:last-child,
+  .roey-connect-callout > *,
+  .roey-settings-grid .card > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .roey-journey h2,
+  .roey-connect-callout h2,
+  .roey-settings-grid h2,
+  .roey-journey p,
+  .roey-connect-callout p,
+  .roey-settings-grid p {
+    overflow-wrap: anywhere;
+  }
+
+  .roey-connect-callout h2,
+  .roey-settings-grid h2 {
+    font-size: 1.45rem;
+    line-height: 1.25;
   }
 
   .roey-composer {

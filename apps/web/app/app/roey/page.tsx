@@ -11,7 +11,7 @@ import {
 import { api, formatIls } from "@/lib/api";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
 import { PageHeader } from "@/components/PageHeader";
-import { PeriodBar, useSelectedMonth } from "@/components/PeriodBar";
+import { MonthSelect, useSelectedMonth } from "@/components/PeriodBar";
 
 type ModelOption = {
   id: string;
@@ -316,7 +316,7 @@ function RoeyPageInner() {
         kicker="המלווה הפיננסי שלך"
         title="Roey"
         subtitle="מבין את התמונה, משקף סיכון ומלווה אותך לצעד הבא."
-        actions={<PeriodBar />}
+        actions={<MonthSelect className="roey-month-select" />}
       />
 
       {profile?.journey && (
