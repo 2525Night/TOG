@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api, formatIls } from "@/lib/api";
@@ -256,6 +263,7 @@ function GoalsInner() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [pool, setPool] = useState<MonthPool | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const createFormRef = useRef<HTMLFormElement | null>(null);
   const [title, setTitle] = useState("");
   const [targetAmount, setTargetAmount] = useState("5000");
   const [currentAmount, setCurrentAmount] = useState("0");
@@ -305,6 +313,17 @@ function GoalsInner() {
     setPool(p);
     return { goals: g, pool: p };
   }
+
+  useEffect(() => {
+    if (!showCreate) return;
+    const t = window.setTimeout(() => {
+      createFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [showCreate]);
 
   useEffect(() => {
     setMsg(null);
@@ -1151,6 +1170,103 @@ function GoalsInner() {
         </p>
       )}
 
+      {showCreate && (
+        <form
+          ref={createFormRef}
+          className="card compact-form goal-create-form"
+          onSubmit={onSubmit}
+        >
+          <h2 style={{ marginTop: 0 }}>יעד חדש</h2>
+          <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+            מעקב ידני — עדיין לא חשבון בנק נפרד.
+          </p>
+          {!hasEmergency && (
+            <label className="debt-add-check">
+              <input
+                type="checkbox"
+                checked={createAsReserve}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setCreateAsReserve(on);
+                  if (on) {
+                    setTitle((t) => t.trim() || "רזרבה להפתעות");
+                    setTargetAmount(String(suggestedReserveAmount()));
+                    setTargetDate("");
+                  }
+                }}
+              />
+              <span>
+                זה רזרבה להפתעות — סכום שמפרידים מהשוטף להגנה מפני הפתעות
+              </span>
+            </label>
+          )}
+          <label className="field">
+            <span>שם היעד</span>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required={!createAsReserve}
+              placeholder={
+                createAsReserve ? "רזרבה להפתעות" : "למשל: חופשה / רכב"
+              }
+            />
+          </label>
+          <div className="grid grid-2">
+            <label className="field">
+              <span>סכום יעד</span>
+              <input
+                type="number"
+                min="1"
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>כמה כבר יש</span>
+              <input
+                type="number"
+                min="0"
+                value={currentAmount}
+                onChange={(e) => setCurrentAmount(e.target.value)}
+              />
+            </label>
+          </div>
+          {!createAsReserve && (
+            <label className="field">
+              <span>תאריך יעד (אופציונלי)</span>
+              <input
+                type="date"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+              />
+            </label>
+          )}
+          {createAsReserve && (
+            <p className="muted debt-wizard-hint">
+              הצעה להתחלה — אפשר לשנות. מטרה נפוצה בהמשך: כ־1–3 חודשי הוצאות
+              קבועות.
+            </p>
+          )}
+          <div className="goal-create-actions">
+            <button className="btn" type="submit" disabled={busy}>
+              {createAsReserve ? "שמירת רזרבה" : "שמירת יעד"}
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={busy}
+              onClick={() => {
+                setShowCreate(false);
+                setCreateAsReserve(false);
+              }}
+            >
+              ביטול
+            </button>
+          </div>
+        </form>
+      )}
+
       {pool && (
         <section className="goals-totals" aria-label="פנוי להקצאה">
           <div className="clarity-answer" style={{ paddingBottom: "0.25rem" }}>
@@ -1329,86 +1445,6 @@ function GoalsInner() {
               לא עכשיו
             </button>
           </div>
-        </form>
-      )}
-
-      {showCreate && (
-        <form className="card compact-form" onSubmit={onSubmit}>
-          <h2 style={{ marginTop: 0 }}>יעד חדש</h2>
-          <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
-            מעקב ידני — עדיין לא חשבון בנק נפרד.
-          </p>
-          {!hasEmergency && (
-            <label className="debt-add-check">
-              <input
-                type="checkbox"
-                checked={createAsReserve}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  setCreateAsReserve(on);
-                  if (on) {
-                    setTitle((t) => t.trim() || "רזרבה להפתעות");
-                    setTargetAmount(String(suggestedReserveAmount()));
-                    setTargetDate("");
-                  }
-                }}
-              />
-              <span>
-                זה רזרבה להפתעות — סכום שמפרידים מהשוטף להגנה מפני הפתעות
-              </span>
-            </label>
-          )}
-          <label className="field">
-            <span>שם היעד</span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required={!createAsReserve}
-              placeholder={
-                createAsReserve ? "רזרבה להפתעות" : "למשל: חופשה / רכב"
-              }
-            />
-          </label>
-          <div className="grid grid-2">
-            <label className="field">
-              <span>סכום יעד</span>
-              <input
-                type="number"
-                min="1"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>כמה כבר יש</span>
-              <input
-                type="number"
-                min="0"
-                value={currentAmount}
-                onChange={(e) => setCurrentAmount(e.target.value)}
-              />
-            </label>
-          </div>
-          {!createAsReserve && (
-            <label className="field">
-              <span>תאריך יעד (אופציונלי)</span>
-              <input
-                type="date"
-                value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
-              />
-            </label>
-          )}
-          {createAsReserve && (
-            <p className="muted debt-wizard-hint">
-              הצעה להתחלה — אפשר לשנות. מטרה נפוצה בהמשך: כ־1–3 חודשי הוצאות
-              קבועות.
-            </p>
-          )}
-          <button className="btn" type="submit" disabled={busy}>
-            {createAsReserve ? "שמירת רזרבה" : "שמירת יעד"}
-          </button>
         </form>
       )}
 

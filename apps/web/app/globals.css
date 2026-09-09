@@ -4666,6 +4666,28 @@ button.linkish:disabled {
   margin-bottom: 0.55rem;
 }
 
+.goal-create-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
+.goal-create-form {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .goal-create-actions {
+    flex-direction: column;
+  }
+
+  .goal-create-actions .btn {
+    width: 100%;
+  }
+}
+
 .kind-chips {
   display: flex;
   flex-wrap: wrap;
