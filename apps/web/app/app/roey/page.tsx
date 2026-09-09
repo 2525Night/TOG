@@ -12,6 +12,7 @@ import { api, formatIls } from "@/lib/api";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { MonthSelect, useSelectedMonth } from "@/components/PeriodBar";
+import { RoeyActionsPanel } from "@/components/roey/RoeyActionsPanel";
 
 type ModelOption = {
   id: string;
@@ -53,6 +54,12 @@ type Forecast = {
   confidence: "LOW" | "MEDIUM" | "HIGH";
   startingAvailable: number;
   assumptionsHe: string[];
+  marketContext?: {
+    policyRatePct: number | null;
+    annualCpiPct: number | null;
+    observedAt: string | null;
+    sourceNames: string[];
+  };
   scenarios: Array<{
     id: "POSITIVE" | "BASE" | "STRESS";
     labelHe: string;
@@ -96,7 +103,37 @@ type ChatResponse = {
 
 type ChatItem =
   | { id: string; role: "USER"; content: string }
-  | { id: string; role: "ASSISTANT"; content: string; response: ChatResponse };
+  | {
+      id: string;
+      role: "ASSISTANT";
+      content: string;
+      response?: ChatResponse;
+    };
+
+type SavedSession = {
+  id: string;
+  titleHe: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: Array<{
+    id: string;
+    role: "USER" | "ASSISTANT";
+    contentHe: string;
+    severity: Risk["severity"] | null;
+    confidence: "LOW" | "MEDIUM" | "HIGH" | null;
+    createdAt: string;
+    payload: ChatResponse | null;
+  }>;
+};
+
+type RoeyNudge = {
+  id: string;
+  titleHe: string;
+  bodyHe: string;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  href: string | null;
+  createdAt: string;
+};
 
 const QUICK_PROMPTS = [
   "מה מצב החודש שלי?",
@@ -107,7 +144,7 @@ const QUICK_PROMPTS = [
 
 function RoeyPageInner() {
   const month = useSelectedMonth();
-  const [tab, setTab] = useState<"CHAT" | "SETTINGS">("CHAT");
+  const [tab, setTab] = useState<"CHAT" | "ACTIONS" | "SETTINGS">("CHAT");
   const [connection, setConnection] = useState<Connection | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -123,30 +160,46 @@ function RoeyPageInner() {
   const [message, setMessage] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatItem[]>([]);
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
+  const [nudges, setNudges] = useState<RoeyNudge[]>([]);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const loadSessions = useCallback(async () => {
+    const nextSessions = await api<SavedSession[]>("/roey/conversations");
+    setSessions(nextSessions);
+    return nextSessions;
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextConnection, nextProfile] = await Promise.all([
+      const [nextConnection, nextProfile, nextNudges] = await Promise.all([
         api<Connection>("/roey/connections/google-ai-studio"),
         api<Profile>("/roey/profile"),
+        api<RoeyNudge[]>("/roey/nudges"),
       ]);
       setConnection(nextConnection);
       setProfile(nextProfile);
+      setNudges(nextNudges);
       if (nextConnection.connected) {
-        const [modelResult, forecastResult] = await Promise.all([
+        const [modelResult, forecastResult, nextSessions] = await Promise.all([
           api<{ models: ModelOption[]; selectedModelId: string | null }>(
             "/roey/connections/models",
           ),
           api<{ forecast: Forecast; risk: Risk }>(
             `/roey/forecast?month=${encodeURIComponent(month)}`,
           ),
+          nextProfile.memoryEnabled
+            ? api<SavedSession[]>("/roey/conversations")
+            : Promise.resolve([]),
         ]);
         setModels(modelResult.models);
         setForecast(forecastResult.forecast);
         setRisk(forecastResult.risk);
+        setSessions(nextSessions);
       } else {
         setModels([]);
         setForecast(null);
@@ -235,6 +288,13 @@ function RoeyPageInner() {
       setProfile((current) =>
         current ? { ...current, ...updated, onboardingSeen: true } : current,
       );
+      if (!updated.memoryEnabled) {
+        setSessions([]);
+        setMessages([]);
+        setConversationId(null);
+      } else {
+        await loadSessions();
+      }
       setSuccess("העדפות Roey נשמרו");
     } catch (err) {
       setError(err instanceof Error ? err.message : "שמירת ההעדפות נכשלה");
@@ -299,8 +359,76 @@ function RoeyPageInner() {
           response,
         },
       ]);
+      if (profile?.memoryEnabled) await loadSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Roey לא הצליח לענות");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startNewSession() {
+    setConversationId(null);
+    setMessages([]);
+    setSessionsOpen(false);
+    setError(null);
+    setSuccess("נפתח סשן חדש. הסשן הקודם נשמר ברשימה.");
+  }
+
+  function openSession(session: SavedSession) {
+    setConversationId(session.id);
+    setMessages(
+      session.messages.map((saved) =>
+        saved.role === "USER"
+          ? {
+              id: saved.id,
+              role: "USER" as const,
+              content: saved.contentHe,
+            }
+          : {
+              id: saved.id,
+              role: "ASSISTANT" as const,
+              content: saved.contentHe,
+              response: saved.payload
+                ? { ...saved.payload, conversationId: session.id }
+                : undefined,
+            },
+      ),
+    );
+    setSessionsOpen(false);
+    setError(null);
+  }
+
+  async function deleteSession() {
+    if (!deleteSessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/roey/conversations/${deleteSessionId}`, {
+        method: "DELETE",
+      });
+      if (conversationId === deleteSessionId) {
+        setConversationId(null);
+        setMessages([]);
+      }
+      setDeleteSessionId(null);
+      await loadSessions();
+      setSuccess("הסשן נמחק.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "מחיקת הסשן נכשלה");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleNudge(id: string, action: "dismiss" | "snooze") {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/roey/nudges/${id}/${action}`, { method: "POST" });
+      setNudges((current) => current.filter((item) => item.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "עדכון ההתראה נכשל");
     } finally {
       setBusy(false);
     }
@@ -319,6 +447,41 @@ function RoeyPageInner() {
         actions={<MonthSelect className="roey-month-select" />}
       />
 
+      {nudges.length > 0 && (
+        <section className="roey-nudge-list" aria-label="עדכונים מ-Roey">
+          {nudges.map((nudge) => (
+            <article
+              className={`card roey-nudge ${nudge.severity.toLowerCase()}`}
+              key={nudge.id}
+            >
+              <div>
+                <span className="roey-eyebrow">Roey שם לב</span>
+                <h2>{nudge.titleHe}</h2>
+                <p>{nudge.bodyHe}</p>
+              </div>
+              <div className="roey-nudge-actions">
+                <button
+                  className="btn secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleNudge(nudge.id, "snooze")}
+                >
+                  הזכר לי בעוד שבוע
+                </button>
+                <button
+                  className="btn quiet"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleNudge(nudge.id, "dismiss")}
+                >
+                  הסרה
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
+
       {profile?.journey && (
         <section className="roey-journey card">
           <div className="roey-avatar" aria-hidden="true">R</div>
@@ -331,6 +494,15 @@ function RoeyPageInner() {
       )}
 
       <div className="roey-tabs" role="tablist" aria-label="Roey">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "ACTIONS"}
+          className={tab === "ACTIONS" ? "active" : ""}
+          onClick={() => setTab("ACTIONS")}
+        >
+          פעולות
+        </button>
         <button
           type="button"
           role="tab"
@@ -370,6 +542,68 @@ function RoeyPageInner() {
           ) : (
             <>
               <div className="roey-chat card">
+                <div className="roey-session-toolbar">
+                  {profile?.memoryEnabled ? (
+                    <>
+                      <button
+                        className="btn quiet"
+                        type="button"
+                        aria-expanded={sessionsOpen}
+                        onClick={() => setSessionsOpen((current) => !current)}
+                      >
+                        סשנים שמורים ({sessions.length})
+                      </button>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={startNewSession}
+                      >
+                        סשן חדש
+                      </button>
+                    </>
+                  ) : (
+                    <span className="muted">
+                      הזיכרון כבוי — השיחה הנוכחית לא תישמר.
+                    </span>
+                  )}
+                </div>
+
+                {sessionsOpen && profile?.memoryEnabled && (
+                  <aside className="roey-session-panel" aria-label="סשנים שמורים">
+                    {sessions.length === 0 ? (
+                      <p className="muted">עדיין אין סשנים שמורים.</p>
+                    ) : (
+                      sessions.map((session) => (
+                        <div
+                          className={`roey-session-row${conversationId === session.id ? " active" : ""}`}
+                          key={session.id}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openSession(session)}
+                          >
+                            <strong>{session.titleHe || "שיחה עם Roey"}</strong>
+                            <small>
+                              {new Date(session.updatedAt).toLocaleDateString(
+                                "he-IL",
+                                { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
+                              )}
+                            </small>
+                          </button>
+                          <button
+                            className="roey-session-delete"
+                            type="button"
+                            aria-label="מחיקת הסשן"
+                            onClick={() => setDeleteSessionId(session.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </aside>
+                )}
+
                 {messages.length === 0 && (
                   <div className="roey-welcome">
                     <div className="roey-avatar large" aria-hidden="true">R</div>
@@ -449,6 +683,11 @@ function RoeyPageInner() {
             </>
           )}
         </section>
+      ) : tab === "ACTIONS" ? (
+        <RoeyActionsPanel
+          month={month}
+          conversationId={conversationId}
+        />
       ) : (
         <section className="roey-settings-grid">
           <div className="card">
@@ -644,6 +883,17 @@ function RoeyPageInner() {
           onCancel={() => setDisconnectOpen(false)}
         />
       )}
+      {deleteSessionId && (
+        <ConfirmPanel
+          title="למחוק את הסשן?"
+          message="השיחה תימחק לצמיתות. הפעולות שכבר בוצעו במערכת לא יבוטלו."
+          confirmLabel="מחיקת הסשן"
+          danger
+          busy={busy}
+          onConfirm={() => void deleteSession()}
+          onCancel={() => setDeleteSessionId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -654,6 +904,14 @@ function AssistantMessage({
   item: Extract<ChatItem, { role: "ASSISTANT" }>;
 }) {
   const { response } = item;
+  if (!response) {
+    return (
+      <article className="roey-message assistant">
+        <span>Roey · סשן שמור</span>
+        <p>{item.content}</p>
+      </article>
+    );
+  }
   return (
     <article className={`roey-message assistant ${response.severity.toLowerCase()}`}>
       <span>Roey · {confidenceHe(response.message.confidence)}</span>
@@ -701,6 +959,28 @@ function ForecastPanel({ forecast, risk }: { forecast: Forecast; risk: Risk }) {
         <span>רמת ביטחון: {confidenceHe(forecast.confidence)}</span>
         <span>זמין התחלתי: {formatIls(forecast.startingAvailable)}</span>
       </div>
+      {forecast.marketContext &&
+        (forecast.marketContext.policyRatePct != null ||
+          forecast.marketContext.annualCpiPct != null) && (
+          <div className="roey-market-factors">
+            <strong>נתוני שוק רשמיים</strong>
+            <div>
+              {forecast.marketContext.policyRatePct != null && (
+                <span>
+                  ריבית בנק ישראל: {forecast.marketContext.policyRatePct}%
+                </span>
+              )}
+              {forecast.marketContext.annualCpiPct != null && (
+                <span>
+                  מדד שנתי: {forecast.marketContext.annualCpiPct}%
+                </span>
+              )}
+            </div>
+            <small>
+              מקור: {forecast.marketContext.sourceNames.join(", ")}
+            </small>
+          </div>
+        )}
       {base && (
         <div className="roey-forecast-points">
           {base.points.map((point) => (
