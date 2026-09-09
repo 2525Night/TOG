@@ -190,7 +190,7 @@ export class GoogleAiStudioProvider {
       alternativesHe: Array.isArray(output.alternativesHe)
         ? output.alternativesHe
             .filter((item): item is string => typeof item === "string")
-            .slice(0, 2)
+            .slice(0, 3)
             .map((item) => item.slice(0, 800))
         : [],
       questionHe:

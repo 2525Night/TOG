@@ -84,24 +84,19 @@ export type RoeyChatResponse = {
 export const ROEY_RESPONSE_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "messageHe",
-    "recommendationHe",
-    "alternativesHe",
-    "questionHe",
-    "confidence",
-  ],
+  required: ["messageHe", "confidence"],
   properties: {
     messageHe: {
       type: "string",
-      description: "תשובה קצרה, אכפתית וישירה בעברית.",
+      description:
+        "תשובה טבעית בעברית, באורך ובמבנה שמתאימים לשיחה הנוכחית.",
     },
     recommendationHe: {
       anyOf: [{ type: "string" }, { type: "null" }],
     },
     alternativesHe: {
       type: "array",
-      maxItems: 2,
+      maxItems: 3,
       items: { type: "string" },
     },
     questionHe: {
