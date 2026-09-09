@@ -6501,7 +6501,8 @@ button.linkish:disabled {
 .roey-page .app-page-header-main,
 .roey-page .app-page-header-copy,
 .roey-workspace,
-.roey-settings-grid {
+.roey-settings-grid,
+.roey-plan-grid {
   min-width: 0;
   max-width: 100%;
 }
@@ -6590,6 +6591,7 @@ button.linkish:disabled {
 
 .roey-tabs {
   display: inline-flex;
+  flex-wrap: wrap;
   justify-self: start;
   padding: 0.25rem;
   background: rgba(255, 255, 255, 0.12);
@@ -7166,10 +7168,180 @@ button.linkish:disabled {
   flex-wrap: wrap;
 }
 
+.roey-inline-card {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--mt-line);
+}
+
+.roey-inline-card.warning {
+  border-color: rgba(181, 106, 40, 0.35);
+}
+
+.roey-inline-card.critical,
+.roey-inline-card.urgent,
+.roey-inline-card.high {
+  border-color: rgba(178, 74, 61, 0.4);
+}
+
+.roey-inline-card > strong,
+.roey-inline-card > p,
+.roey-inline-effect {
+  overflow-wrap: anywhere;
+}
+
+.roey-inline-controls,
+.roey-inline-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.roey-citation-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.roey-citation-list li,
+.roey-limits li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.roey-citation-list small,
+.roey-limits {
+  color: var(--mt-mute);
+}
+
+.roey-limits {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.roey-plan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.roey-plan-form,
+.roey-plan-side,
+.roey-plan-side .card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.roey-plan-form,
+.roey-plan-side .card {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.roey-plan-form h2,
+.roey-plan-side h2,
+.roey-milestone-timeline h2,
+.roey-plan-timeline h2,
+.roey-outcomes h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.roey-plan-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.roey-plan-section-head,
+.roey-memory-add,
+.roey-memory-list > div,
+.roey-outcomes > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.roey-milestones,
+.roey-memory-list,
+.roey-plan-timeline,
+.roey-escalations,
+.roey-outcomes {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.roey-milestone-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1.4fr) minmax(0, 0.7fr) minmax(0, 0.8fr) 36px;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.roey-milestone-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(61, 127, 114, 0.14);
+  color: var(--mt-mint-deep);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.roey-milestone-row input,
+.roey-memory-add input {
+  width: 100%;
+  min-width: 0;
+}
+
+.roey-milestone-timeline ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0;
+}
+
+.roey-milestone-timeline li,
+.roey-plan-timeline article,
+.roey-escalations article {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0 0.75rem 0.9rem;
+  border-right: 2px solid rgba(61, 127, 114, 0.28);
+}
+
+.roey-milestone-timeline li + li,
+.roey-plan-timeline article + article,
+.roey-escalations article + article {
+  border-top: 1px solid var(--mt-line);
+}
+
+.roey-memory-list > div,
+.roey-outcomes > div {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--mt-line);
+}
+
+.roey-memory-list span,
+.roey-plan-timeline p,
+.roey-escalations strong {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 860px) {
   .roey-workspace,
   .roey-settings-grid,
-  .roey-actions {
+  .roey-actions,
+  .roey-plan-grid {
     grid-template-columns: 1fr;
   }
 
@@ -7282,10 +7454,12 @@ button.linkish:disabled {
 
   .roey-tabs {
     width: 100%;
+    flex-wrap: wrap;
+    border-radius: 18px;
   }
 
   .roey-tabs button {
-    flex: 1;
+    flex: 1 1 calc(50% - 0.3rem);
     padding-inline: 0.45rem;
   }
 
@@ -7367,6 +7541,37 @@ button.linkish:disabled {
   .roey-action-card-head > div {
     min-width: 0;
     max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .roey-plan-fields,
+  .roey-milestone-row,
+  .roey-memory-add,
+  .roey-inline-controls > div {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .roey-milestone-row {
+    grid-template-columns: 28px minmax(0, 1fr) 36px;
+  }
+
+  .roey-milestone-row input[type="number"],
+  .roey-milestone-row input[type="date"] {
+    grid-column: 2;
+  }
+
+  .roey-plan-form,
+  .roey-plan-side .card,
+  .roey-inline-card {
+    padding: 1rem;
+    overflow: hidden;
+  }
+
+  .roey-plan-form h2,
+  .roey-plan-side h2,
+  .roey-inline-card strong,
+  .roey-inline-card p {
     overflow-wrap: anywhere;
   }
 }

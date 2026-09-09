@@ -30,6 +30,7 @@ import type {
   RoeyActionType,
 } from "./roey-action.types";
 import { RoeyContextService } from "./roey-context.service";
+import { RoeyReconciliationService } from "./roey-reconciliation.service";
 
 @Injectable()
 export class RoeyActionService {
@@ -39,6 +40,7 @@ export class RoeyActionService {
     private readonly transactions: TransactionsService,
     private readonly budget: BudgetService,
     private readonly goals: GoalsService,
+    private readonly reconciliation: RoeyReconciliationService,
   ) {}
 
   async propose(userId: string, dto: CreateRoeyActionProposalDto) {
@@ -92,6 +94,7 @@ export class RoeyActionService {
   ) {
     const proposal = await this.requireProposal(userId, proposalId);
     if (proposal.status === "EXECUTED") {
+      await this.finishAgentRun(proposal.runId, "COMPLETE");
       return this.present(proposal);
     }
     if (proposal.status !== "PENDING" && proposal.status !== "APPROVED") {
@@ -139,12 +142,23 @@ export class RoeyActionService {
     }
 
     try {
+      await this.finishAgentRun(proposal.runId, "VERIFY", false);
       await this.execute(
         userId,
         proposal.type as RoeyActionType,
         payload,
         proposal.id,
       );
+      await this.finishAgentRun(proposal.runId, "COMPLETE");
+      await this.reconciliation
+        .scheduleAction(userId, proposal.id)
+        .then(() => this.reconciliation.reconcileDue(userId))
+        .catch((error) => {
+          console.error("Roey reconciliation scheduling failed", {
+            proposalId: proposal.id,
+            error,
+          });
+        });
       return this.present(await this.requireProposal(userId, proposal.id));
     } catch (error) {
       const incidentId = randomUUID();
@@ -170,6 +184,7 @@ export class RoeyActionService {
         type: proposal.type,
         incidentId,
       });
+      await this.finishAgentRun(proposal.runId, "FAILED");
       throw new ConflictException(
         `ביצוע הפעולה נכשל. מזהה תקלה: ${incidentId}`,
       );
@@ -194,7 +209,9 @@ export class RoeyActionService {
       throw new ConflictException("ההצעה כבר טופלה");
     }
     await this.audit(userId, "ROEY_ACTION_REJECTED", { proposalId });
-    return this.present(await this.requireProposal(userId, proposalId));
+    const proposal = await this.requireProposal(userId, proposalId);
+    await this.finishAgentRun(proposal.runId, "COMPLETE");
+    return this.present(proposal);
   }
 
   private async buildPreview(
@@ -474,6 +491,7 @@ export class RoeyActionService {
   private present(row: {
     id: string;
     conversationId: string | null;
+    runId: string | null;
     type: string;
     status: string;
     payloadJson: string;
@@ -492,6 +510,7 @@ export class RoeyActionService {
     return {
       id: row.id,
       conversationId: row.conversationId,
+      runId: row.runId,
       type: row.type,
       status: row.status,
       payload: parseObject(row.payloadJson),
@@ -521,6 +540,23 @@ export class RoeyActionService {
         meta: meta ? JSON.stringify(meta) : null,
       },
     });
+  }
+
+  private finishAgentRun(
+    runId: string | null,
+    state: "VERIFY" | "COMPLETE" | "FAILED",
+    completed = state === "COMPLETE" || state === "FAILED",
+  ) {
+    if (!runId) return Promise.resolve();
+    return this.prisma.roeyAgentRun
+      .update({
+        where: { id: runId },
+        data: {
+          state,
+          ...(completed ? { completedAt: new Date() } : {}),
+        },
+      })
+      .then(() => undefined);
   }
 }
 

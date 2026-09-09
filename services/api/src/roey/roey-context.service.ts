@@ -155,7 +155,17 @@ export class RoeyContextService {
         source: "Dashboard.debtsSummary.principalTotal",
       },
     ];
-    return values;
+    return values.map((fact) => ({
+      ...fact,
+      observedAt: summary.monthFacts.meta.computedAt,
+      retrievedAt: new Date().toISOString(),
+      reliability:
+        summary.completeness >= 70
+          ? ("VERIFIED" as const)
+          : ("PARTIAL" as const),
+      freshness: "CURRENT" as const,
+      formulaVersion: summary.formulaVersion,
+    }));
   }
 }
 

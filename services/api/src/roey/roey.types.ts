@@ -60,6 +60,11 @@ export type RoeyFact = {
   value: number | string;
   displayHe: string;
   source: string;
+  observedAt?: string;
+  retrievedAt?: string;
+  reliability?: "VERIFIED" | "ESTIMATED" | "PARTIAL";
+  freshness?: "CURRENT" | "STALE" | "UNKNOWN";
+  formulaVersion?: string;
 };
 
 export type RoeyAgentOutput = {
@@ -79,6 +84,37 @@ export type RoeyChatResponse = {
   factsUsed: RoeyFact[];
   forecast: RoeyForecast;
   modelId: string;
+  agent: {
+    runId: string;
+    intent: string;
+    citations: Array<{
+      factId: string;
+      claimHe: string;
+      source: string;
+    }>;
+    capabilities: Array<{
+      id: string;
+      descriptionHe: string;
+      mode: string;
+      reasonHe?: string;
+    }>;
+  };
+  actionProposal?: {
+    id: string;
+    type: string;
+    status: string;
+    severity: string;
+    requiresDoubleConfirm: boolean;
+    expiresAt: string | Date;
+    preview: Record<string, unknown>;
+  } | null;
+  escalation?: {
+    id: string;
+    type: string;
+    urgency: string;
+    status: string;
+    summaryHe: string;
+  } | null;
 };
 
 export const ROEY_RESPONSE_JSON_SCHEMA = {

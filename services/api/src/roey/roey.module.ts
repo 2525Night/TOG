@@ -1,9 +1,17 @@
 import { Module } from "@nestjs/common";
 import { DashboardModule } from "../dashboard/dashboard.module";
+import { FinancialPlanService } from "./financial-plan.service";
+import { RoeyFactRegistryService } from "./roey-fact-registry.service";
+import { RoeyOrchestratorService } from "./roey-orchestrator.service";
+import { RoeyToolRegistryService } from "./roey-tool-registry.service";
+import { RoeyMemoryService } from "./roey-memory.service";
+import { RoeyReconciliationService } from "./roey-reconciliation.service";
+import { RoeyEscalationService } from "./roey-escalation.service";
 import { BudgetModule } from "../budget/budget.module";
 import { GoalsModule } from "../goals/goals.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { TransactionsModule } from "../transactions/transactions.module";
+import { MonthFactsModule } from "../month-facts/month-facts.module";
 import { GoogleAiStudioProvider } from "./google-ai-studio.provider";
 import { MarketDataService } from "./market-data.service";
 import { RoeyActionService } from "./roey-action.service";
@@ -22,6 +30,7 @@ import { RoeyService } from "./roey.service";
     TransactionsModule,
     BudgetModule,
     GoalsModule,
+    MonthFactsModule,
   ],
   providers: [
     RoeyService,
@@ -33,6 +42,13 @@ import { RoeyService } from "./roey.service";
     GoogleAiStudioProvider,
     MarketDataService,
     RoeyNudgeService,
+    FinancialPlanService,
+    RoeyFactRegistryService,
+    RoeyOrchestratorService,
+    RoeyToolRegistryService,
+    RoeyMemoryService,
+    RoeyReconciliationService,
+    RoeyEscalationService,
   ],
   controllers: [RoeyController],
   exports: [RoeyService],

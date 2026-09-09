@@ -80,6 +80,10 @@ model User {
   roeyMessages        RoeyMessage[]
   roeyActionProposals RoeyActionProposal[]
   roeyNudges          RoeyNudge[]
+  financialPlan       UserFinancialPlan?
+  roeyAgentRuns       RoeyAgentRun[]
+  roeySemanticMemory  RoeySemanticMemory[]
+  roeyEscalations     RoeyEscalation[]
 }
 
 model FinancialAccount {
@@ -449,6 +453,8 @@ model RoeyConversation {
   id        String   @id @default(cuid())
   userId    String
   titleHe   String?
+  summaryHe String?
+  summaryUpdatedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -482,6 +488,7 @@ model RoeyActionProposal {
   id                    String    @id @default(cuid())
   userId                String
   conversationId        String?
+  runId                 String?
   type                  String
   status                String    @default("PENDING")
   payloadJson           String
@@ -501,6 +508,7 @@ model RoeyActionProposal {
 
   @@index([userId, status, createdAt])
   @@index([conversationId])
+  @@index([runId])
 }
 
 model MarketDataSnapshot {
@@ -532,4 +540,196 @@ model RoeyNudge {
 
   @@unique([userId, key])
   @@index([userId, status, updatedAt])
+}
+
+model UserFinancialPlan {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  version           Int      @default(1)
+  status            String   @default("ACTIVE")
+  objectiveHe       String
+  motivationHe      String?
+  priority          String   @default("STABILITY")
+  horizonMonths     Int?
+  riskCapacity      String   @default("CONSERVATIVE")
+  nextActionHe      String?
+  assumptionsJson   String?
+  reviewTriggersJson String?
+  reviewAt          DateTime?
+  lastReviewedAt    DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones FinancialPlanMilestone[]
+  constraints FinancialPlanConstraint[]
+  events      FinancialPlanEvent[]
+}
+
+model FinancialPlanMilestone {
+  id           String    @id @default(cuid())
+  planId       String
+  titleHe      String
+  targetAmount Decimal?
+  targetDate   DateTime?
+  status       String    @default("PENDING")
+  progressPct  Int       @default(0)
+  position     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  plan UserFinancialPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, position])
+}
+
+model FinancialPlanConstraint {
+  id        String   @id @default(cuid())
+  planId    String
+  type      String
+  labelHe   String
+  valueJson String?
+  hard      Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan UserFinancialPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, type])
+}
+
+model FinancialPlanEvent {
+  id          String   @id @default(cuid())
+  planId      String
+  version     Int
+  type        String
+  summaryHe   String
+  reasonHe    String?
+  changesJson String?
+  source      String   @default("USER")
+  createdAt   DateTime @default(now())
+
+  plan UserFinancialPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+}
+
+model RoeyAgentRun {
+  id             String    @id @default(cuid())
+  userId         String
+  conversationId String?
+  planId         String?
+  runtimeVersion String
+  promptVersion  String
+  policyVersion  String
+  modelId        String?
+  intent         String
+  state          String
+  contextHash    String?
+  maxModelCalls  Int       @default(3)
+  maxToolCalls   Int       @default(5)
+  modelCalls     Int       @default(0)
+  toolCalls      Int       @default(0)
+  citedFactIdsJson String?
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  errorCode      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spans RoeyAgentTraceSpan[]
+
+  @@index([userId, createdAt])
+  @@index([conversationId])
+}
+
+model RoeyAgentTraceSpan {
+  id           String    @id @default(cuid())
+  runId        String
+  type         String
+  name         String
+  status       String
+  inputHash    String?
+  outputHash   String?
+  metadataJson String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  run RoeyAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, startedAt])
+}
+
+model RoeySemanticMemory {
+  id                   String    @id @default(cuid())
+  userId               String
+  key                  String
+  valueJson            String
+  sourceConversationId String?
+  sourceMessageId      String?
+  confidence           Float     @default(1)
+  userConfirmed        Boolean   @default(false)
+  status               String    @default("ACTIVE")
+  expiresAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, status])
+}
+
+model RoeyClaimEvidence {
+  id          String   @id @default(cuid())
+  runId       String
+  messageId   String?
+  factId      String
+  claimHe     String
+  source      String
+  createdAt   DateTime @default(now())
+
+  @@index([runId])
+  @@index([messageId])
+}
+
+model RoeyOutcomeReconciliation {
+  id               String    @id @default(cuid())
+  userId           String
+  proposalId       String?   @unique
+  forecastRunId    String?   @unique
+  type             String
+  expectedJson     String
+  actualJson       String?
+  status           String    @default("PENDING")
+  varianceJson     String?
+  dueAt            DateTime
+  reconciledAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, status, dueAt])
+  @@index([proposalId])
+}
+
+model RoeyEscalation {
+  id                  String    @id @default(cuid())
+  userId              String
+  conversationId      String?
+  runId               String?
+  type                String
+  urgency             String
+  status              String    @default("OPEN")
+  summaryHe           String
+  evidenceFactIdsJson String?
+  unresolvedJson      String?
+  userApprovedHandoff Boolean   @default(false)
+  resolvedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
 }

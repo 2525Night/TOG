@@ -13,6 +13,13 @@ import { ConfirmPanel } from "@/components/ConfirmPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { MonthSelect, useSelectedMonth } from "@/components/PeriodBar";
 import { RoeyActionsPanel } from "@/components/roey/RoeyActionsPanel";
+import {
+  RoeyCitations,
+  RoeyInlineAction,
+  RoeyInlineEscalation,
+  type InlineActionProposal,
+} from "@/components/roey/RoeyChatCards";
+import { RoeyPlanPanel } from "@/components/roey/RoeyPlanPanel";
 
 type ModelOption = {
   id: string;
@@ -99,6 +106,44 @@ type ChatResponse = {
   journey: Journey;
   factsUsed: Fact[];
   forecast: Forecast;
+  agent?: {
+    runId: string;
+    intent: string;
+    citations: Array<{
+      factId: string;
+      claimHe: string;
+      source: string;
+    }>;
+    capabilities: Array<{
+      id: string;
+      descriptionHe: string;
+      mode: string;
+      reasonHe?: string;
+    }>;
+  };
+  actionProposal?: {
+    id: string;
+    type: string;
+    status: string;
+    severity: "INFO" | "WARNING" | "CRITICAL";
+    requiresDoubleConfirm: boolean;
+    expiresAt: string;
+    preview: {
+      titleHe?: string;
+      summaryHe?: string;
+      effectHe?: string;
+      alternativeHe?: string | null;
+      availableBefore?: number | null;
+      availableAfter?: number | null;
+    };
+  } | null;
+  escalation?: {
+    id: string;
+    type: string;
+    urgency: string;
+    status: string;
+    summaryHe: string;
+  } | null;
 };
 
 type ChatItem =
@@ -145,7 +190,9 @@ const QUICK_PROMPTS = [
 
 function RoeyPageInner() {
   const month = useSelectedMonth();
-  const [tab, setTab] = useState<"CHAT" | "ACTIONS" | "SETTINGS">("CHAT");
+  const [tab, setTab] = useState<"CHAT" | "PLAN" | "ACTIONS" | "SETTINGS">(
+    "CHAT",
+  );
   const [connection, setConnection] = useState<Connection | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -397,7 +444,7 @@ function RoeyPageInner() {
               role: "ASSISTANT" as const,
               content: saved.contentHe,
               response: saved.payload
-                ? { ...saved.payload, conversationId: session.id }
+                ? restoreChatResponse(saved.payload, session.id)
                 : undefined,
             },
         ),
@@ -430,6 +477,55 @@ function RoeyPageInner() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function refreshForecast() {
+    try {
+      const forecastResult = await api<{ forecast: Forecast; risk: Risk }>(
+        `/roey/forecast?month=${encodeURIComponent(month)}`,
+      );
+      setForecast(forecastResult.forecast);
+      setRisk(forecastResult.risk);
+    } catch {
+      // The chat answer already reflects the latest known state.
+    }
+  }
+
+  function updateAssistantProposal(
+    messageId: string,
+    updated: InlineActionProposal,
+  ) {
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === messageId && item.role === "ASSISTANT" && item.response
+          ? {
+              ...item,
+              response: { ...item.response, actionProposal: updated },
+            }
+          : item,
+      ),
+    );
+  }
+
+  function updateAssistantEscalation(
+    messageId: string,
+    status: "HANDOFF_REQUESTED" | "DISMISSED",
+  ) {
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === messageId && item.role === "ASSISTANT" && item.response
+          ? {
+              ...item,
+              response: item.response.escalation
+                ? {
+                    ...item.response,
+                    escalation: { ...item.response.escalation, status },
+                  }
+                : item.response,
+            }
+          : item,
+      ),
+    );
   }
 
   async function handleNudge(id: string, action: "dismiss" | "snooze") {
@@ -508,15 +604,6 @@ function RoeyPageInner() {
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "ACTIONS"}
-          className={tab === "ACTIONS" ? "active" : ""}
-          onClick={() => setTab("ACTIONS")}
-        >
-          פעולות
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={tab === "CHAT"}
           className={tab === "CHAT" ? "active" : ""}
           onClick={() => setTab("CHAT")}
@@ -526,11 +613,29 @@ function RoeyPageInner() {
         <button
           type="button"
           role="tab"
+          aria-selected={tab === "PLAN"}
+          className={tab === "PLAN" ? "active" : ""}
+          onClick={() => setTab("PLAN")}
+        >
+          מסע
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "ACTIONS"}
+          className={tab === "ACTIONS" ? "active" : ""}
+          onClick={() => setTab("ACTIONS")}
+        >
+          פעולות
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={tab === "SETTINGS"}
           className={tab === "SETTINGS" ? "active" : ""}
           onClick={() => setTab("SETTINGS")}
         >
-          הגדרות וחיבור
+          הגדרות
         </button>
       </div>
 
@@ -648,7 +753,20 @@ function RoeyPageInner() {
                         <p>{item.content}</p>
                       </article>
                     ) : (
-                      <AssistantMessage key={item.id} item={item} />
+                      <AssistantMessage
+                        key={item.id}
+                        item={item}
+                        busy={busy}
+                        onActionUpdated={(updated) =>
+                          updateAssistantProposal(item.id, updated)
+                        }
+                        onEscalationResolved={(status) =>
+                          updateAssistantEscalation(item.id, status)
+                        }
+                        onError={setError}
+                        onSuccess={setSuccess}
+                        onForecastRefresh={() => void refreshForecast()}
+                      />
                     ),
                   )}
                   {busy && (
@@ -697,6 +815,8 @@ function RoeyPageInner() {
             </>
           )}
         </section>
+      ) : tab === "PLAN" ? (
+        <RoeyPlanPanel />
       ) : tab === "ACTIONS" ? (
         <RoeyActionsPanel
           month={month}
@@ -914,8 +1034,20 @@ function RoeyPageInner() {
 
 function AssistantMessage({
   item,
+  busy,
+  onActionUpdated,
+  onEscalationResolved,
+  onError,
+  onSuccess,
+  onForecastRefresh,
 }: {
   item: Extract<ChatItem, { role: "ASSISTANT" }>;
+  busy: boolean;
+  onActionUpdated: (updated: InlineActionProposal) => void;
+  onEscalationResolved: (status: "HANDOFF_REQUESTED" | "DISMISSED") => void;
+  onError: (message: string) => void;
+  onSuccess: (message: string) => void;
+  onForecastRefresh: () => void;
 }) {
   const { response } = item;
   if (!response) {
@@ -947,19 +1079,66 @@ function AssistantMessage({
         </div>
       )}
       {response.message.questionHe && <p>{response.message.questionHe}</p>}
-      <details className="roey-sources">
-        <summary>על אילו נתונים הסתמכתי?</summary>
-        <ul>
-          {response.factsUsed.map((fact) => (
-            <li key={fact.id}>
-              <span>{fact.labelHe}</span>
-              <strong>{fact.displayHe}</strong>
-            </li>
-          ))}
-        </ul>
-      </details>
+      {response.actionProposal && (
+        <RoeyInlineAction
+          proposal={{
+            ...response.actionProposal,
+            expiresAt: String(response.actionProposal.expiresAt),
+          }}
+          busy={busy}
+          onApproved={(updated) => {
+            onActionUpdated(updated);
+            onSuccess("הפעולה בוצעה ונרשמה על ידי Roey.");
+            onForecastRefresh();
+          }}
+          onRejected={(updated) => {
+            onActionUpdated(updated);
+            onSuccess("ההצעה נדחתה ולא בוצע שינוי.");
+          }}
+          onError={onError}
+        />
+      )}
+      {response.escalation && (
+        <RoeyInlineEscalation
+          escalation={response.escalation}
+          busy={busy}
+          onResolved={(status) => {
+            onEscalationResolved(status);
+            onSuccess(
+              status === "HANDOFF_REQUESTED"
+                ? "בקשת ההעברה לאדם אושרה."
+                : "בקשת ההסלמה הוסרה.",
+            );
+          }}
+          onError={onError}
+        />
+      )}
+      <RoeyCitations
+        citations={response.agent?.citations || []}
+        facts={response.factsUsed || []}
+        capabilities={response.agent?.capabilities}
+      />
     </article>
   );
+}
+
+function restoreChatResponse(payload: ChatResponse, conversationId: string): ChatResponse {
+  const legacy = payload as ChatResponse & {
+    runId?: string;
+    intent?: string;
+    citations?: NonNullable<ChatResponse["agent"]>["citations"];
+    capabilities?: NonNullable<ChatResponse["agent"]>["capabilities"];
+  };
+  return {
+    ...payload,
+    conversationId,
+    agent: payload.agent || {
+      runId: legacy.runId || "",
+      intent: legacy.intent || "EXPLAIN",
+      citations: legacy.citations || [],
+      capabilities: legacy.capabilities || [],
+    },
+  };
 }
 
 function ForecastPanel({ forecast, risk }: { forecast: Forecast; risk: Risk }) {

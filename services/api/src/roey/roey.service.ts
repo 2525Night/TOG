@@ -19,6 +19,8 @@ import {
 import { RoeyContextService, DEFAULT_ROEY_PROFILE } from "./roey-context.service";
 import { RoeyCryptoService } from "./roey-crypto.service";
 import { RoeyJourneyService } from "./roey-journey.service";
+import { RoeyOrchestratorService } from "./roey-orchestrator.service";
+import { RoeyMemoryService } from "./roey-memory.service";
 import type { RoeyAgentOutput, RoeyChatResponse } from "./roey.types";
 
 @Injectable()
@@ -31,6 +33,8 @@ export class RoeyService {
     private readonly google: GoogleAiStudioProvider,
     private readonly contextService: RoeyContextService,
     private readonly journeyService: RoeyJourneyService,
+    private readonly orchestrator: RoeyOrchestratorService,
+    private readonly memory: RoeyMemoryService,
   ) {}
 
   async connection(userId: string) {
@@ -181,8 +185,7 @@ export class RoeyService {
       fields: Object.keys(dto),
     });
     if (dto.memoryEnabled === false) {
-      await this.prisma.roeyConversation.deleteMany({ where: { userId } });
-      await this.audit(userId, "ROEY_MEMORY_PURGED");
+      await this.memory.purge(userId);
     }
     return row;
   }
@@ -229,16 +232,21 @@ export class RoeyService {
           take: 8,
         })
       : [];
-    const modelOutput = await this.google.generate(
-      this.crypto.decrypt(connection.encryptedCredential),
-      connection.modelId,
-      built.context,
+    const turn = await this.orchestrator.execute({
+      userId,
+      conversationId: conversation?.id ?? null,
+      message: userMessage,
+      month: dto.month,
+      apiKey: this.crypto.decrypt(connection.encryptedCredential),
+      modelId: connection.modelId,
+      history:
       historyRows.reverse().map((message) => ({
         role: message.role === "ASSISTANT" ? "model" : "user",
         content: message.contentHe,
       })),
-      userMessage,
-    );
+    });
+    const { built } = turn;
+    const modelOutput = turn.output;
     const output =
       modelOutput && this.numbersAreGrounded(modelOutput, built.context)
         ? modelOutput
@@ -274,6 +282,21 @@ export class RoeyService {
                   built.factsUsed.map((fact) => fact.source),
                 ),
                 payloadJson: JSON.stringify({
+                  runId: turn.runId,
+                  intent: turn.intent,
+                  citations: turn.citations,
+                  agent: {
+                    runId: turn.runId,
+                    intent: turn.intent,
+                    citations: turn.citations,
+                    capabilities: turn.factPack.capabilities,
+                  },
+                  actionProposal:
+                    "actionProposal" in turn
+                      ? turn.actionProposal
+                      : null,
+                  escalation:
+                    "escalation" in turn ? turn.escalation : null,
                   message: output,
                   severity: built.risk.severity,
                   risk: built.risk,
@@ -311,6 +334,23 @@ export class RoeyService {
         }),
         null);
 
+    if (persistedConversationId) {
+      await this.prisma.roeyAgentRun.update({
+        where: { id: turn.runId },
+        data: { conversationId: persistedConversationId },
+      });
+      if ("actionProposal" in turn && turn.actionProposal) {
+        await this.prisma.roeyActionProposal.update({
+          where: { id: turn.actionProposal.id },
+          data: { conversationId: persistedConversationId },
+        });
+      }
+      await this.memory.summarizeConversation(
+        userId,
+        persistedConversationId,
+      );
+    }
+
     return {
       conversationId: persistedConversationId,
       message: output,
@@ -320,6 +360,15 @@ export class RoeyService {
       factsUsed: built.factsUsed,
       forecast: built.forecast,
       modelId: connection.modelId,
+      agent: {
+        runId: turn.runId,
+        intent: turn.intent,
+        citations: turn.citations,
+        capabilities: turn.factPack.capabilities,
+      },
+      actionProposal:
+        "actionProposal" in turn ? turn.actionProposal : null,
+      escalation: "escalation" in turn ? turn.escalation : null,
     };
   }
 

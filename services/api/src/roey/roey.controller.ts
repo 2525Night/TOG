@@ -20,6 +20,16 @@ import { RoeyActionService } from "./roey-action.service";
 import { MarketDataService } from "./market-data.service";
 import { RoeyNudgeService } from "./roey-nudge.service";
 import {
+  ReviewFinancialPlanDto,
+  UpsertFinancialPlanDto,
+} from "./financial-plan.dto";
+import { FinancialPlanService } from "./financial-plan.service";
+import { UpsertRoeyMemoryDto } from "./roey-memory.dto";
+import { RoeyMemoryService } from "./roey-memory.service";
+import { RoeyReconciliationService } from "./roey-reconciliation.service";
+import { RoeyEscalationService } from "./roey-escalation.service";
+import { RoeyOrchestratorService } from "./roey-orchestrator.service";
+import {
   ConnectGoogleAiStudioDto,
   RoeyChatDto,
   SelectRoeyModelDto,
@@ -35,6 +45,11 @@ export class RoeyController {
     private readonly actions: RoeyActionService,
     private readonly market: MarketDataService,
     private readonly nudges: RoeyNudgeService,
+    private readonly financialPlan: FinancialPlanService,
+    private readonly memory: RoeyMemoryService,
+    private readonly reconciliation: RoeyReconciliationService,
+    private readonly escalations: RoeyEscalationService,
+    private readonly orchestrator: RoeyOrchestratorService,
   ) {}
 
   @Get("connections/google-ai-studio")
@@ -191,5 +206,78 @@ export class RoeyController {
     @Param("id") id: string,
   ) {
     return this.nudges.snooze(user.userId, id);
+  }
+
+  @Get("plan")
+  plan(@CurrentUser() user: AuthUser) {
+    return this.financialPlan.get(user.userId);
+  }
+
+  @Patch("plan")
+  upsertPlan(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpsertFinancialPlanDto,
+  ) {
+    return this.financialPlan.upsert(user.userId, dto);
+  }
+
+  @Post("plan/review")
+  reviewPlan(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ReviewFinancialPlanDto,
+  ) {
+    return this.financialPlan.review(user.userId, dto);
+  }
+
+  @Get("memory")
+  memoryList(@CurrentUser() user: AuthUser) {
+    return this.memory.list(user.userId);
+  }
+
+  @Post("memory")
+  upsertMemory(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpsertRoeyMemoryDto,
+  ) {
+    return this.memory.upsert(user.userId, dto);
+  }
+
+  @Delete("memory/:id")
+  forgetMemory(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.memory.forget(user.userId, id);
+  }
+
+  @Get("outcomes")
+  outcomes(@CurrentUser() user: AuthUser) {
+    return this.reconciliation.reconcileDue(user.userId);
+  }
+
+  @Get("escalations")
+  escalationList(@CurrentUser() user: AuthUser) {
+    return this.escalations.list(user.userId);
+  }
+
+  @Post("escalations/:id/approve-handoff")
+  approveEscalationHandoff(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.escalations.approveHandoff(user.userId, id);
+  }
+
+  @Post("escalations/:id/dismiss")
+  dismissEscalation(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.escalations.dismiss(user.userId, id);
+  }
+
+  @Get("runs")
+  runs(@CurrentUser() user: AuthUser) {
+    return this.orchestrator.recentRuns(user.userId);
   }
 }
