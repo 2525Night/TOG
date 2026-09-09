@@ -262,11 +262,17 @@ function ensureCategoryForDirection(
 function emptyAddDraft(mode: "expense" | "income", month: string): AddDraft {
   const direction = mode === "income" ? "INCOME" : "EXPENSE";
   const cats = categoriesForDirection(direction);
+  const preferred =
+    mode === "income"
+      ? cats.find((c) => c.key === "salary") || cats[0]
+      : cats.find((c) => c.key === "food") ||
+        cats.find((c) => c.nature === "variable") ||
+        cats[0];
   return {
     mode,
     amount: "",
     description: "",
-    categoryKey: cats[0]?.key || (mode === "income" ? "salary" : "food"),
+    categoryKey: preferred?.key || (mode === "income" ? "salary" : "food"),
     bookedAt: defaultBookedDate(month),
     economicRole: "STANDARD",
     loanId: "",
@@ -931,8 +937,21 @@ function MoneyInner() {
           return !same;
         }).length > 0;
 
+      const savedAgainstOpenCommitment =
+        direction === "EXPENSE" &&
+        pendingCommitments.some((i) => {
+          const open = i.status === "pending" || i.status === "partial";
+          if (!open) return false;
+          if (i.categoryKey !== addDraft.categoryKey) return false;
+          if (addDraft.description && i.titleHe === addDraft.description) {
+            return true;
+          }
+          // Chip fill usually matches title; casual adds should not keep the form open.
+          return false;
+        });
+
       await refresh();
-      if (direction === "EXPENSE" && stillPendingAfter) {
+      if (savedAgainstOpenCommitment && stillPendingAfter) {
         setAddDraft({
           ...emptyAddDraft("expense", month),
           bookedAt: addDraft.bookedAt,
@@ -2269,6 +2288,11 @@ function MoneyInner() {
             <>
             {addDraft && (
               <div className="tx-draft-block">
+              <p className="muted tx-draft-hint" style={{ margin: "0 0 0.45rem" }}>
+                {addDraft.mode === "income"
+                  ? "סכום · מאיפה · קטגוריה — ואז שמירה"
+                  : "סכום · עבור מה · קטגוריה — ואז שמירה. תשלום מהעו״ש כברירת מחדל."}
+              </p>
               <div
                 className={`tx-dense-row draft with-date ${
                   addDraft.mode === "income" ? "in" : "out"

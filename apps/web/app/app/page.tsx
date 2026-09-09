@@ -308,7 +308,7 @@ function DashboardInner() {
       "expected" ||
     (Math.abs(expenseForBar) < 0.005 && plannedFixed > 0.005);
   const sparseSetup =
-    (facts?.meta?.txCount ?? 0) <= 2 && usingExpectedFixed;
+    Math.abs(expenseForBar) < 0.005 && usingExpectedFixed;
   const toGoalsBar =
     facts?.flows.allocatedToGoals ??
     data.allocatedToGoalsMtd ??
