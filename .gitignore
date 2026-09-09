@@ -42,3 +42,13 @@ tmp/
 
 *.tsbuildinfo
 
+# Android / Capacitor
+apps/mobile/android/.gradle/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/android/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+

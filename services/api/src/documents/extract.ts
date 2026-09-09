@@ -17,6 +17,14 @@ export type DraftRow = {
   evidence: string[];
   recurringHint?: boolean;
   duplicate?: boolean;
+  /** Running balance after this row (statement) */
+  balance?: number | null;
+  /** Running balance before this row */
+  prevBalance?: number | null;
+  /** balance - prevBalance when both known */
+  balanceDelta?: number | null;
+  /** Flagged for user review (ambiguous direction) */
+  needsReview?: boolean;
 };
 
 export type DetectedKind = "csv" | "pdf" | "image";
@@ -253,9 +261,25 @@ export function resolveAmountAndDescription(input: {
 
   let credit: number | null = null;
   let debit: number | null = null;
-  if (signed != null) {
-    if (signed > 0) credit = Math.abs(signed);
-    if (signed < 0) debit = Math.abs(signed);
+
+  // Prefer signed direction from running-balance Δ (statement truth).
+  if (
+    input.balance != null &&
+    input.prevBalance != null &&
+    Number.isFinite(input.balance) &&
+    Number.isFinite(input.prevBalance)
+  ) {
+    const delta = input.balance - input.prevBalance;
+    if (Math.abs(Math.abs(delta) - amount) < 0.051 && Math.abs(delta) >= 0.01) {
+      if (delta > 0) credit = amount;
+      else debit = amount;
+    }
+  }
+
+  // Only trust an embedded signed amount when the text itself is negative
+  // (positive bare numbers in descriptions are not credit columns).
+  if (credit == null && debit == null && signed != null && signed < 0) {
+    debit = Math.abs(signed);
   }
 
   return {
@@ -298,10 +322,29 @@ function enrichRow(
     recurringCount: count,
   });
 
-  const confidence = Math.min(
-    1,
-    (dirRes.confidence + cat.confidence) / 2,
-  );
+  const balAuthoritative = dirRes.evidence.includes("bal:authoritative");
+  let confidence = balAuthoritative
+    ? 1
+    : Math.min(1, (dirRes.confidence + cat.confidence) / 2);
+  const needsReview = balAuthoritative
+    ? false
+    : Boolean(dirRes.needsReview) ||
+      dirRes.evidence.some((e) => e.startsWith("fallback:ambiguous")) ||
+      confidence < 0.45;
+  if (needsReview) {
+    confidence = Math.min(confidence, 0.42);
+  }
+
+  let balanceDelta: number | null = null;
+  if (
+    partial.balance != null &&
+    partial.prevBalance != null &&
+    Number.isFinite(partial.balance) &&
+    Number.isFinite(partial.prevBalance)
+  ) {
+    balanceDelta =
+      Math.round((partial.balance - partial.prevBalance) * 100) / 100;
+  }
 
   return {
     direction,
@@ -314,6 +357,10 @@ function enrichRow(
     confidence: Math.round(confidence * 100) / 100,
     evidence: [...dirRes.evidence, ...cat.evidence],
     recurringHint: cat.recurringHint,
+    balance: partial.balance ?? null,
+    prevBalance: partial.prevBalance ?? null,
+    balanceDelta,
+    needsReview: needsReview || undefined,
   };
 }
 
@@ -332,11 +379,82 @@ export function draftQuality(draft: DraftRow[]) {
   const income = draft.filter((r) => r.direction === "INCOME").length;
   const expense = draft.filter((r) => r.direction === "EXPENSE").length;
   const transfer = draft.filter((r) => r.direction === "TRANSFER").length;
+  const incomeSum = draft
+    .filter((r) => r.direction === "INCOME")
+    .reduce((s, r) => s + r.amount, 0);
+  const expenseSum = draft
+    .filter((r) => r.direction === "EXPENSE")
+    .reduce((s, r) => s + r.amount, 0);
   const needsReview = draft.filter(
-    (r) => r.confidence < 0.45 || r.duplicate,
+    (r) =>
+      r.needsReview ||
+      r.confidence < 0.45 ||
+      r.duplicate ||
+      (r.evidence || []).some((e) => e.startsWith("fallback:ambiguous")),
   ).length;
   const duplicates = draft.filter((r) => r.duplicate).length;
-  return { income, expense, transfer, needsReview, duplicates, total: draft.length };
+
+  const withBal = draft.filter(
+    (r) => r.balance != null && Number.isFinite(r.balance),
+  );
+  let statementDelta: number | null = null;
+  let signedSum: number | null = null;
+  let reconcileWarn: boolean | undefined;
+  if (withBal.length >= 2) {
+    const first = withBal[0];
+    const lastBal = withBal[withBal.length - 1].balance!;
+    let firstPrev =
+      first.prevBalance != null && Number.isFinite(first.prevBalance)
+        ? first.prevBalance!
+        : null;
+    // Reconstruct opening balance when the first row has no prev.
+    if (
+      firstPrev == null &&
+      first.balance != null &&
+      first.balanceDelta != null &&
+      Number.isFinite(first.balanceDelta)
+    ) {
+      firstPrev = first.balance - first.balanceDelta;
+    } else if (
+      firstPrev == null &&
+      first.balance != null &&
+      Math.abs(first.amount) >= 0.01
+    ) {
+      // Assume amount equals |Δ| once direction is known.
+      firstPrev =
+        first.direction === "INCOME"
+          ? first.balance - first.amount
+          : first.direction === "EXPENSE"
+            ? first.balance + first.amount
+            : null;
+    }
+    if (firstPrev != null) {
+      statementDelta = Math.round((lastBal - firstPrev) * 100) / 100;
+      signedSum =
+        Math.round(
+          draft.reduce((s, r) => {
+            if (r.direction === "INCOME") return s + r.amount;
+            if (r.direction === "EXPENSE") return s - r.amount;
+            return s;
+          }, 0) * 100,
+        ) / 100;
+      reconcileWarn = Math.abs(statementDelta - signedSum) > 1;
+    }
+  }
+
+  return {
+    income,
+    expense,
+    transfer,
+    incomeSum: Math.round(incomeSum * 100) / 100,
+    expenseSum: Math.round(expenseSum * 100) / 100,
+    needsReview,
+    duplicates,
+    total: draft.length,
+    statementDelta,
+    signedSum,
+    reconcileWarn,
+  };
 }
 
 export function parseCsvTransactions(text: string): DraftRow[] {
@@ -362,20 +480,108 @@ export function parseCsvTransactions(text: string): DraftRow[] {
     ]),
     type: findCol(headerCells, ["type", "direction", "סוג"]),
     category: findCol(headerCells, ["category", "קטגוריה"]),
+    credit: findCol(headerCells, [
+      "credit",
+      "זכות",
+      "הפקדה",
+      "הכנסה",
+      "incoming",
+    ]),
+    debit: findCol(headerCells, [
+      "debit",
+      "חובה",
+      "משיכה",
+      "הוצאה",
+      "outgoing",
+    ]),
+    balance: findCol(headerCells, [
+      "balance",
+      "יתרה",
+      "יתרה מצטברת",
+      "running balance",
+    ]),
   };
-  if (idx.date < 0 || idx.amount < 0) return [];
+  if (idx.date < 0 || (idx.amount < 0 && idx.credit < 0 && idx.debit < 0)) {
+    return [];
+  }
 
   const recurring = new Map<string, number>();
   const rows: DraftRow[] = [];
+  let prevBalance: number | null = null;
+
   for (const line of lines.slice(1)) {
     const cells = splitCsvLine(line);
-    const amountRaw = (cells[idx.amount] || "").replace(/[₪,\s]/g, "");
-    let amount = Number(amountRaw);
-    if (!Number.isFinite(amount) || amount === 0) continue;
-    amount = Math.abs(amount);
-
     const booked = parseDate(cells[idx.date] || "");
     if (!booked) continue;
+
+    const creditRaw =
+      idx.credit >= 0
+        ? Number((cells[idx.credit] || "").replace(/[₪,\s]/g, ""))
+        : NaN;
+    const debitRaw =
+      idx.debit >= 0
+        ? Number((cells[idx.debit] || "").replace(/[₪,\s]/g, ""))
+        : NaN;
+    const balanceRaw =
+      idx.balance >= 0
+        ? Number((cells[idx.balance] || "").replace(/[₪,\s]/g, ""))
+        : NaN;
+    const balance = Number.isFinite(balanceRaw) ? balanceRaw : null;
+
+    let amount = 0;
+    let credit: number | null = null;
+    let debit: number | null = null;
+    let signedFromAmount: number | null = null;
+
+    if (Number.isFinite(creditRaw) && creditRaw > 0) {
+      credit = Math.abs(creditRaw);
+      amount = credit;
+    }
+    if (Number.isFinite(debitRaw) && debitRaw > 0) {
+      debit = Math.abs(debitRaw);
+      amount = debit;
+    }
+
+    if (idx.amount >= 0) {
+      const amountRaw = (cells[idx.amount] || "").replace(/[₪,\s]/g, "");
+      const parsed = Number(amountRaw);
+      if (Number.isFinite(parsed) && parsed !== 0) {
+        signedFromAmount = parsed;
+        if (amount < 0.01) {
+          amount = Math.abs(parsed);
+          if (parsed > 0 && credit == null && debit == null) credit = amount;
+          if (parsed < 0 && credit == null && debit == null) debit = amount;
+        }
+      }
+    }
+
+    if (
+      amount < 0.01 &&
+      balance != null &&
+      prevBalance != null &&
+      Math.abs(balance - prevBalance) >= 0.01
+    ) {
+      const delta = balance - prevBalance;
+      amount = Math.abs(delta);
+      if (delta > 0) credit = amount;
+      if (delta < 0) debit = amount;
+    }
+
+    if (!Number.isFinite(amount) || amount < 0.01) {
+      if (balance != null) prevBalance = balance;
+      continue;
+    }
+
+    // Prefer signed amount columns when credit/debit empty
+    if (
+      signedFromAmount != null &&
+      credit == null &&
+      debit == null &&
+      Math.abs(signedFromAmount) >= 0.01
+    ) {
+      if (signedFromAmount > 0) credit = Math.abs(signedFromAmount);
+      if (signedFromAmount < 0) debit = Math.abs(signedFromAmount);
+    }
 
     const description = (cells[idx.description] || "").trim() || "ייבוא CSV";
     const typeHint = idx.type >= 0 ? cells[idx.type] : null;
@@ -387,10 +593,15 @@ export function parseCsvTransactions(text: string): DraftRow[] {
           description,
           bookedAt: toLocalDateIso(booked),
           typeHint,
+          credit,
+          debit,
+          balance,
+          prevBalance,
         },
         recurring,
       ),
     );
+    if (balance != null) prevBalance = balance;
   }
   return rows;
 }
@@ -419,6 +630,184 @@ export function parseUnstructuredText(text: string): DraftRow[] {
   return payslip;
 }
 
+function detectNewestFirstStatement(
+  rows: Array<{ amount: number; balance: number | null; sourceIndex: number }>,
+): boolean {
+  const bySource = [...rows].sort((a, b) => a.sourceIndex - b.sourceIndex);
+  let newestFirst = 0;
+  let oldestFirst = 0;
+  for (let i = 0; i < bySource.length - 1; i++) {
+    const a = bySource[i];
+    const b = bySource[i + 1];
+    if (a.balance == null || b.balance == null) continue;
+    const d = a.balance - b.balance;
+    if (Math.abs(d) < 0.009) continue;
+    if (Math.abs(Math.abs(d) - a.amount) < 0.051) newestFirst += 1;
+    if (Math.abs(Math.abs(d) - b.amount) < 0.051) oldestFirst += 1;
+  }
+  if (newestFirst === 0 && oldestFirst === 0) {
+    // Israeli "דף חשבון" PDFs are almost always newest → oldest.
+    return true;
+  }
+  return newestFirst >= oldestFirst;
+}
+
+/** Oldest → newest by date; reverse same-day when the PDF is newest-first. */
+function sortStatementChronological<
+  T extends {
+    booked: Date;
+    amount: number;
+    balance: number | null;
+    sourceIndex: number;
+  },
+>(rows: T[]): T[] {
+  const newestFirst = detectNewestFirstStatement(rows);
+  return [...rows].sort((a, b) => {
+    const dt = a.booked.getTime() - b.booked.getTime();
+    if (dt !== 0) return dt;
+    return newestFirst
+      ? b.sourceIndex - a.sourceIndex
+      : a.sourceIndex - b.sourceIndex;
+  });
+}
+
+/**
+ * Order rows so each step's running-balance Δ matches that row's amount.
+ * Handles bank PDFs where value-date ≠ posting order across pages.
+ */
+function orderByBalanceChain<
+  T extends {
+    booked: Date;
+    amount: number;
+    balance: number | null;
+    sourceIndex: number;
+  },
+>(rows: T[]): T[] {
+  if (rows.length <= 1) return rows;
+  const newestFirst = detectNewestFirstStatement(rows);
+  const indexed = rows.map((r, i) => ({ r, i }));
+  const withBal = indexed.filter((x) => x.r.balance != null);
+  if (withBal.length < 2) return sortStatementChronological(rows);
+
+  const balRows = withBal.map((x) => x.r);
+  const n = balRows.length;
+
+  const successorsOf = (i: number, used: Set<number>): number[] => {
+    const out: number[] = [];
+    const prevBal = balRows[i].balance!;
+    for (let j = 0; j < n; j++) {
+      if (j === i || used.has(j)) continue;
+      const delta = balRows[j].balance! - prevBal;
+      if (Math.abs(Math.abs(delta) - balRows[j].amount) < 0.051) out.push(j);
+    }
+    return out;
+  };
+
+  const predecessorsOf = (j: number): number[] => {
+    const out: number[] = [];
+    const bal = balRows[j].balance!;
+    for (let i = 0; i < n; i++) {
+      if (i === j) continue;
+      const delta = bal - balRows[i].balance!;
+      if (Math.abs(Math.abs(delta) - balRows[j].amount) < 0.051) out.push(i);
+    }
+    return out;
+  };
+
+  const scoreSucc = (from: number, to: number): number => {
+    let s = 0;
+    const a = balRows[from];
+    const b = balRows[to];
+    const dayMs = 86_400_000;
+    const dateGap = Math.abs(a.booked.getTime() - b.booked.getTime()) / dayMs;
+    if (dateGap <= 1) s += 8;
+    else if (dateGap <= 3) s += 3;
+    const srcGap = Math.abs(a.sourceIndex - b.sourceIndex);
+    if (srcGap === 1) s += 20;
+    else if (srcGap <= 3) s += 8;
+    else if (srcGap <= 8) s += 3;
+    // Walking old→new: newer rows appear earlier in a newest-first PDF.
+    if (newestFirst && b.sourceIndex < a.sourceIndex) s += 5;
+    if (!newestFirst && b.sourceIndex > a.sourceIndex) s += 5;
+    return s;
+  };
+
+  const pickBest = (from: number, cands: number[]): number => {
+    cands.sort((a, b) => {
+      const ds = scoreSucc(from, b) - scoreSucc(from, a);
+      if (ds !== 0) return ds;
+      return balRows[a].sourceIndex - balRows[b].sourceIndex;
+    });
+    return cands[0];
+  };
+
+  const used = new Set<number>();
+  const orderedIdx: number[] = [];
+
+  const starts = [];
+  for (let j = 0; j < n; j++) {
+    if (predecessorsOf(j).length === 0) starts.push(j);
+  }
+  starts.sort((a, b) => {
+    const dt = balRows[a].booked.getTime() - balRows[b].booked.getTime();
+    if (dt !== 0) return dt;
+    return newestFirst
+      ? balRows[b].sourceIndex - balRows[a].sourceIndex
+      : balRows[a].sourceIndex - balRows[b].sourceIndex;
+  });
+
+  let current =
+    starts[0] ??
+    [...Array(n).keys()].sort(
+      (a, b) => balRows[b].sourceIndex - balRows[a].sourceIndex,
+    )[0];
+
+  while (orderedIdx.length < n) {
+    used.add(current);
+    orderedIdx.push(current);
+    const succs = successorsOf(current, used);
+    if (succs.length) {
+      current = pickBest(current, succs);
+      continue;
+    }
+    const rem = [...Array(n).keys()].filter((i) => !used.has(i));
+    if (!rem.length) break;
+    // New segment: prefer a remaining node with no unused predecessor.
+    const remStarts = rem.filter(
+      (j) => predecessorsOf(j).filter((p) => !used.has(p)).length === 0,
+    );
+    const pool = remStarts.length ? remStarts : rem;
+    pool.sort((a, b) => {
+      const da = Math.abs(balRows[a].balance! - balRows[current].balance!);
+      const db = Math.abs(balRows[b].balance! - balRows[current].balance!);
+      if (Math.abs(da - db) > 0.01) return da - db;
+      return balRows[a].booked.getTime() - balRows[b].booked.getTime();
+    });
+    current = pool[0];
+  }
+
+  const orderedBal = orderedIdx.map((i) => balRows[i]);
+  const out: T[] = [];
+  const claimed = new Set<number>();
+  for (const row of orderedBal) {
+    const hit = indexed.find(
+      (x) =>
+        !claimed.has(x.i) &&
+        x.r.sourceIndex === row.sourceIndex &&
+        x.r.balance === row.balance &&
+        x.r.amount === row.amount,
+    );
+    if (hit) {
+      claimed.add(hit.i);
+      out.push(hit.r);
+    }
+  }
+  for (const x of indexed) {
+    if (!claimed.has(x.i)) out.push(x.r);
+  }
+  return out;
+}
+
 function parseIsraeliBankStatement(text: string): DraftRow[] {
   const recurring = new Map<string, number>();
   const parsed: Array<{
@@ -426,8 +815,10 @@ function parseIsraeliBankStatement(text: string): DraftRow[] {
     description: string;
     amount: number;
     balance: number | null;
+    sourceIndex: number;
   }> = [];
 
+  let sourceIndex = 0;
   for (const rawLine of text.split(/\r?\n/)) {
     if (isMetaStatementLine(rawLine)) continue;
     const line = rawLine.replace(/\t+/g, "\t").trim();
@@ -452,15 +843,15 @@ function parseIsraeliBankStatement(text: string): DraftRow[] {
       description,
       amount,
       balance: Number.isFinite(balance) ? balance : null,
+      sourceIndex: sourceIndex++,
     });
   }
 
-  parsed.sort((a, b) => a.booked.getTime() - b.booked.getTime());
+  const ordered = orderByBalanceChain(parsed);
   const rows: DraftRow[] = [];
-  const seen = new Set<string>();
   let prevBalance: number | null = null;
 
-  for (const row of parsed) {
+  for (const row of ordered) {
     const resolved = resolveAmountAndDescription({
       description: row.description,
       columnAmount: row.amount,
@@ -480,9 +871,6 @@ function parseIsraeliBankStatement(text: string): DraftRow[] {
       recurring,
     );
     if (row.balance != null) prevBalance = row.balance;
-    const key = `${enriched.bookedAt}|${enriched.amount}|${enriched.merchantNorm}|${enriched.direction}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     rows.push(enriched);
   }
   return rows.slice(0, 400);
@@ -556,8 +944,10 @@ function parseTransactionLines(text: string): DraftRow[] {
     description: string;
     amount: number | null;
     balance: number | null;
+    sourceIndex: number;
   };
   const raw: RawLine[] = [];
+  let sourceIndex = 0;
 
   for (const rawLine of text.split(/\r?\n/)) {
     if (isMetaStatementLine(rawLine)) continue;
@@ -601,15 +991,23 @@ function parseTransactionLines(text: string): DraftRow[] {
       .replace(/\s+/g, " ")
       .trim();
     if (!description || description.length < 2) continue;
-    raw.push({ booked, description, amount, balance });
+    raw.push({
+      booked,
+      description,
+      amount,
+      balance,
+      sourceIndex: sourceIndex++,
+    });
   }
 
-  raw.sort((a, b) => a.booked.getTime() - b.booked.getTime());
-  for (let i = 0; i < raw.length; i++) {
-    const row = raw[i];
+  const ordered = orderByBalanceChain(
+    raw.map((r) => ({ ...r, amount: r.amount ?? 0 })),
+  );
+  for (let i = 0; i < ordered.length; i++) {
+    const row = ordered[i];
     if (row.amount != null && row.amount > 0) continue;
     if (row.balance == null) continue;
-    const prev = [...raw.slice(0, i)].reverse().find((r) => r.balance != null);
+    const prev = [...ordered.slice(0, i)].reverse().find((r) => r.balance != null);
     if (!prev || prev.balance == null) continue;
     const delta = row.balance - prev.balance;
     if (Math.abs(delta) < 1) continue;
@@ -618,9 +1016,8 @@ function parseTransactionLines(text: string): DraftRow[] {
 
   const recurring = new Map<string, number>();
   const rows: DraftRow[] = [];
-  const seen = new Set<string>();
   let prevBalance: number | null = null;
-  for (const row of raw) {
+  for (const row of ordered) {
     if (row.amount == null || row.amount < 0.01) continue;
     const resolved = resolveAmountAndDescription({
       description: row.description,
@@ -647,12 +1044,9 @@ function parseTransactionLines(text: string): DraftRow[] {
       recurring,
     );
     if (row.balance != null) prevBalance = row.balance;
-    const key = `${enriched.bookedAt}|${enriched.amount}|${enriched.merchantNorm}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     rows.push(enriched);
   }
-  return rows.slice(0, 300);
+  return rows.slice(0, 400);
 }
 
 function splitCsvLine(line: string): string[] {

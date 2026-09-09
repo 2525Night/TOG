@@ -514,28 +514,37 @@ export class DocumentsService {
       const dirRes = classifyDirection({
         description: row.description,
         amount: row.amount,
+        balance: row.balance,
+        prevBalance: row.prevBalance,
         rememberedDirection,
       });
       const direction = dirRes.direction;
       const cat = resolveCategory(row.description, direction, {
         rememberedCategoryKey: rememberedCategory,
       });
+      const needsReview =
+        Boolean(dirRes.needsReview) ||
+        Boolean(row.needsReview) ||
+        dirRes.evidence.some((e) => e.startsWith("fallback:ambiguous"));
+      let confidence = Math.min(
+        1,
+        Math.round(((dirRes.confidence + cat.confidence) / 2) * 100) / 100,
+      );
+      if (needsReview) confidence = Math.min(confidence, 0.42);
       return {
         ...row,
         direction,
         categoryKey: cat.categoryKey,
         categoryLabelHe: cat.categoryLabelHe,
         merchantNorm: cat.merchantNorm || row.merchantNorm,
-        confidence: Math.min(
-          1,
-          Math.round(((dirRes.confidence + cat.confidence) / 2) * 100) / 100,
-        ),
+        confidence,
         evidence: [
           ...row.evidence,
           ...dirRes.evidence,
           ...cat.evidence,
         ],
         recurringHint: cat.recurringHint || row.recurringHint,
+        needsReview: needsReview || undefined,
       };
     });
   }

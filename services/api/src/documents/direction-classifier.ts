@@ -4,6 +4,8 @@ export type DirectionResult = {
   direction: TxDirection;
   confidence: number;
   evidence: string[];
+  /** Ambiguous / conflicting signals — UI should highlight for review */
+  needsReview?: boolean;
 };
 
 type ClassifyInput = {
@@ -36,12 +38,14 @@ const TRANSFER_HINT =
 
 /**
  * Multi-signal income/expense/transfer classifier (MoneyTail LLD).
+ * Balance Δ that matches amount is a strong signal (statement truth).
  */
 export function classifyDirection(input: ClassifyInput): DirectionResult {
   let scoreIncome = 0;
   let scoreExpense = 0;
   let scoreTransfer = 0;
   const evidence: string[] = [];
+  let needsReview = false;
 
   const type = (input.typeHint || "").toLowerCase();
   if (type) {
@@ -67,18 +71,27 @@ export function classifyDirection(input: ClassifyInput): DirectionResult {
       scoreExpense += 1;
       evidence.push("col:debit");
     }
+  } else if (credit != null && credit > 0 && (debit == null || !(debit > 0))) {
+    scoreIncome += 1;
+    evidence.push("col:credit");
+  } else if (debit != null && debit > 0 && (credit == null || !(credit > 0))) {
+    scoreExpense += 1;
+    evidence.push("col:debit");
   }
 
   const desc = input.description || "";
+  const hasP0Expense = P0_EXPENSE.test(desc);
+  const hasP0Income = P0_INCOME.test(desc);
+
   if (TRANSFER_HINT.test(desc)) {
     scoreTransfer += 0.9;
     evidence.push("lex:transfer");
   }
-  if (P0_EXPENSE.test(desc)) {
+  if (hasP0Expense) {
     scoreExpense += 0.85;
     evidence.push("lex:p0-expense");
   }
-  if (P0_INCOME.test(desc)) {
+  if (hasP0Income) {
     scoreIncome += 0.85;
     evidence.push("lex:p0-income");
   }
@@ -91,39 +104,101 @@ export function classifyDirection(input: ClassifyInput): DirectionResult {
     evidence.push("lex:p1-expense");
   }
 
+  let balanceDir: TxDirection | null = null;
+  let balanceAuthoritative = false;
   if (
     input.balance != null &&
     input.prevBalance != null &&
     Number.isFinite(input.balance) &&
-    Number.isFinite(input.prevBalance)
+    Number.isFinite(input.prevBalance) &&
+    Number.isFinite(input.amount) &&
+    input.amount >= 0.01
   ) {
     const delta = input.balance - input.prevBalance;
     if (Math.abs(Math.abs(delta) - input.amount) < 0.05) {
+      // Statement math: running balance moved by exactly this amount.
+      // This is definitive for money-in vs money-out on this account.
+      balanceAuthoritative = true;
       if (delta > 0) {
-        scoreIncome += 0.45;
+        balanceDir = "INCOME";
+        scoreIncome += 1.0;
         evidence.push("bal:+");
       } else if (delta < 0) {
-        scoreExpense += 0.45;
+        balanceDir = "EXPENSE";
+        scoreExpense += 1.0;
         evidence.push("bal:-");
       }
     }
   }
 
-  if (input.rememberedDirection === "INCOME") {
-    scoreIncome += 0.9;
-    evidence.push("mem:income");
-  } else if (input.rememberedDirection === "EXPENSE") {
-    scoreExpense += 0.9;
-    evidence.push("mem:expense");
-  } else if (input.rememberedDirection === "TRANSFER") {
-    scoreTransfer += 0.9;
-    evidence.push("mem:transfer");
+  if (balanceAuthoritative && balanceDir) {
+    return {
+      direction: balanceDir,
+      confidence: 1,
+      evidence: [...evidence, "bal:authoritative"],
+    };
+  }
+
+  // Memory is helpful but must not silently override a matching balance Δ.
+  const mem = input.rememberedDirection;
+  if (mem === "INCOME") {
+    if (balanceDir && balanceDir !== "INCOME") {
+      evidence.push("mem:income-skipped");
+      needsReview = true;
+    } else {
+      scoreIncome += 0.9;
+      evidence.push("mem:income");
+    }
+  } else if (mem === "EXPENSE") {
+    if (balanceDir && balanceDir !== "EXPENSE") {
+      evidence.push("mem:expense-skipped");
+      needsReview = true;
+    } else {
+      scoreExpense += 0.9;
+      evidence.push("mem:expense");
+    }
+  } else if (mem === "TRANSFER") {
+    if (balanceDir) {
+      evidence.push("mem:transfer-skipped");
+      needsReview = true;
+    } else {
+      scoreTransfer += 0.9;
+      evidence.push("mem:transfer");
+    }
   }
 
   // P0 expense beats P1 income on conflict already via weights; explicit guard:
-  if (P0_EXPENSE.test(desc) && P1_INCOME.test(desc)) {
+  if (hasP0Expense && P1_INCOME.test(desc)) {
     scoreExpense += 0.2;
     evidence.push("conflict:expense-wins");
+  }
+
+  // Balance matches amount but strong opposing P0 lexicon — keep both, flag review
+  if (balanceDir === "INCOME" && hasP0Expense && !hasP0Income) {
+    needsReview = true;
+    evidence.push("conflict:bal-vs-lex");
+  } else if (balanceDir === "EXPENSE" && hasP0Income && !hasP0Expense) {
+    needsReview = true;
+    evidence.push("conflict:bal-vs-lex");
+  }
+
+  // Matching balance Δ wins over weaker competing scores
+  if (balanceDir === "INCOME" && scoreIncome >= scoreExpense && scoreIncome >= scoreTransfer) {
+    // already leading
+  } else if (
+    balanceDir === "INCOME" &&
+    scoreExpense > scoreIncome &&
+    !hasP0Expense
+  ) {
+    scoreIncome = Math.max(scoreIncome, scoreExpense + 0.15);
+    evidence.push("rule:bal-wins");
+  } else if (
+    balanceDir === "EXPENSE" &&
+    scoreIncome > scoreExpense &&
+    !hasP0Income
+  ) {
+    scoreExpense = Math.max(scoreExpense, scoreIncome + 0.15);
+    evidence.push("rule:bal-wins");
   }
 
   const scores: Array<{ d: TxDirection; s: number }> = [
@@ -138,10 +213,20 @@ export function classifyDirection(input: ClassifyInput): DirectionResult {
 
   let direction: TxDirection = best.d;
   if (best.s < 0.15 || margin < 0.15) {
-    direction = "EXPENSE";
-    evidence.push("fallback:expense");
+    direction = balanceDir || "EXPENSE";
+    evidence.push(balanceDir ? "fallback:bal" : "fallback:ambiguous");
+    needsReview = true;
   }
 
-  const confidence = Math.min(1, Math.max(0.05, margin || best.s || 0.1));
-  return { direction, confidence: Math.round(confidence * 100) / 100, evidence };
+  let confidence = Math.min(1, Math.max(0.05, margin || best.s || 0.1));
+  if (needsReview) {
+    confidence = Math.min(confidence, 0.42);
+  }
+
+  return {
+    direction,
+    confidence: Math.round(confidence * 100) / 100,
+    evidence,
+    needsReview: needsReview || undefined,
+  };
 }

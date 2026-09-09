@@ -1,6 +1,6 @@
 {
   "name": "moneytail",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "workspaces": [
     "apps/*",
@@ -11,6 +11,10 @@
     "dev:api": "npm run dev -w @moneytail/api",
     "dev:web": "npm run dev -w @moneytail/web",
     "dev:admin": "npm run dev -w @moneytail/admin",
+    "mobile:add": "npm run add:android -w @moneytail/mobile",
+    "mobile:sync": "npm run sync -w @moneytail/mobile",
+    "mobile:open": "npm run open -w @moneytail/mobile",
+    "mobile:apk": "npm run build:debug -w @moneytail/mobile",
     "build": "npm run build -w @moneytail/shared && npm run build -w @moneytail/api && npm run build -w @moneytail/web && npm run build -w @moneytail/admin",
     "db:generate": "npm run prisma:generate -w @moneytail/api",
     "db:migrate": "npm run prisma:migrate -w @moneytail/api",

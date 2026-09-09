@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MoneyTail</string>
+    <string name="title_activity_main">MoneyTail</string>
+    <string name="package_name">com.mtails.moneytail</string>
+    <string name="custom_url_scheme">com.mtails.moneytail</string>
+</resources>

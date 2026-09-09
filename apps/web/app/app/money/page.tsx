@@ -3,8 +3,10 @@
 import {
   FormEvent,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -25,7 +27,6 @@ import {
 } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Pulse } from "@/components/Pulse";
-import { FeelRow } from "@/components/FeelRow";
 import { WinStrip } from "@/components/WinStrip";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
@@ -146,20 +147,41 @@ type DraftRow = {
   evidence?: string[];
   duplicate?: boolean;
   recurringHint?: boolean;
+  balance?: number | null;
+  prevBalance?: number | null;
+  balanceDelta?: number | null;
+  needsReview?: boolean;
 };
+
+type ImportDirFilter = "ALL" | "INCOME" | "EXPENSE" | "REVIEW";
 
 function evidenceLabelHe(code: string): string {
   if (code.startsWith("lex:")) return "מילון";
   if (code.startsWith("col:")) return "עמודת דוח";
+  if (code === "bal:+") return "יתרה עלתה";
+  if (code === "bal:-") return "יתרה ירדה";
   if (code.startsWith("bal:")) return "יתרה";
+  if (code.startsWith("mem:") && code.endsWith("-skipped")) return "זיכרון נדחה";
   if (code.startsWith("mem:")) return "זיכרון";
   if (code.startsWith("rule:")) return "כלל";
   if (code.startsWith("type:")) return "סוג שורה";
-  if (code === "transfer" || code === "recurring") return code === "transfer" ? "העברה" : "חוזר";
+  if (code === "transfer" || code === "recurring")
+    return code === "transfer" ? "העברה" : "חוזר";
+  if (code === "fallback:ambiguous") return "לא ברור";
+  if (code === "fallback:bal") return "לפי יתרה";
   if (code === "fallback" || code.startsWith("fallback:")) return "ברירת מחדל";
   if (code.startsWith("user:")) return "עריכה";
   if (code.startsWith("conflict:")) return "קונפליקט";
   return code;
+}
+
+function rowNeedsReview(row: DraftRow): boolean {
+  return Boolean(
+    row.needsReview ||
+      row.duplicate ||
+      (row.confidence != null && row.confidence < 0.45) ||
+      (row.evidence || []).some((e) => e.startsWith("fallback:ambiguous")),
+  );
 }
 
 type UploadResult = {
@@ -173,9 +195,27 @@ type UploadResult = {
     needsReview: number;
     duplicates: number;
     total: number;
+    incomeSum?: number;
+    expenseSum?: number;
+    statementDelta?: number | null;
+    signedSum?: number | null;
+    reconcileWarn?: boolean;
   };
-  period?: { defaultMonth?: string; statementFrom?: string; statementTo?: string };
+  period?: {
+    defaultMonth?: string;
+    statementFrom?: string;
+    statementTo?: string;
+  };
 };
+
+type TxListPage = {
+  items: Tx[];
+  hasMore: boolean;
+  nextBefore: string | null;
+  nextBeforeId: string | null;
+};
+
+const TX_PAGE_SIZE = 40;
 
 type DocListItem = {
   id: string;
@@ -291,6 +331,15 @@ function MoneyInner() {
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [txs, setTxs] = useState<Tx[]>([]);
+  const [listHasMore, setListHasMore] = useState(false);
+  const [listLoadingMore, setListLoadingMore] = useState(false);
+  const [listScope, setListScope] = useState<"month" | "older">("month");
+  const [listCursor, setListCursor] = useState<{
+    before: string;
+    beforeId: string;
+  } | null>(null);
+  const loadMoreLock = useRef(false);
+  const listSentinelRef = useRef<HTMLDivElement | null>(null);
   const [loanOpts, setLoanOpts] = useState<LoanOpt[]>([]);
   const [cardOpts, setCardOpts] = useState<CardOpt[]>([]);
   const [docs, setDocs] = useState<DocListItem[]>([]);
@@ -319,7 +368,11 @@ function MoneyInner() {
   const [draft, setDraft] = useState<UploadResult | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [keepFile, setKeepFile] = useState(false);
+  const [uploadFileName, setUploadFileName] = useState<string | null>(null);
+  const [uploadDragOver, setUploadDragOver] = useState(false);
   const [editable, setEditable] = useState<DraftRow[]>([]);
+  const [importDirFilter, setImportDirFilter] =
+    useState<ImportDirFilter>("ALL");
   const [q, setQ] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [groupByDay, setGroupByDay] = useState(false);
@@ -405,17 +458,20 @@ function MoneyInner() {
     monthFacts?.checkingBalanceNow ??
     (checkingAccount ? Number(checkingAccount.currentBalance) : 0);
 
-  const monthTxs = useMemo(() => txs, [txs]);
+  const monthTxs = useMemo(
+    () => txs.filter((t) => t.bookedAt.slice(0, 7) === month),
+    [txs, month],
+  );
 
   const dirCounts = useMemo(() => {
-    const c = { ALL: monthTxs.length, INCOME: 0, EXPENSE: 0, TRANSFER: 0 };
-    for (const t of monthTxs) c[t.direction] += 1;
+    const c = { ALL: txs.length, INCOME: 0, EXPENSE: 0, TRANSFER: 0 };
+    for (const t of txs) c[t.direction] += 1;
     return c;
-  }, [monthTxs]);
+  }, [txs]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return monthTxs.filter((t) => {
+    return txs.filter((t) => {
       if (dirFilter !== "ALL" && t.direction !== dirFilter) return false;
       if (categoryFilter && t.categoryKey !== categoryFilter) return false;
       if (loanFilter && t.loanId !== loanFilter) return false;
@@ -428,7 +484,7 @@ function MoneyInner() {
       return true;
     });
   }, [
-    monthTxs,
+    txs,
     dirFilter,
     categoryFilter,
     loanFilter,
@@ -505,12 +561,15 @@ function MoneyInner() {
 
   async function refresh(opts?: { docs?: boolean }) {
     const needDocs = opts?.docs ?? tab === "import";
-    const txQs = new URLSearchParams({ month });
+    const txQs = new URLSearchParams({
+      month,
+      limit: String(TX_PAGE_SIZE),
+    });
     if (loanFilter) txQs.set("loanId", loanFilter);
     if (cardFilter) txQs.set("creditCardId", cardFilter);
-    const [a, t, facts, cats, d, loansRes, cardsRes] = await Promise.all([
+    const [a, txPage, facts, cats, d, loansRes, cardsRes] = await Promise.all([
       api<Account[]>("/accounts"),
-      api<Tx[]>(`/transactions?${txQs.toString()}`),
+      api<TxListPage>(`/transactions?${txQs.toString()}`),
       api<MonthFacts>(`/month-facts?month=${month}`).catch(() => null),
       api<UserCat[]>("/categories").catch(() => [] as UserCat[]),
       needDocs
@@ -524,7 +583,21 @@ function MoneyInner() {
       ),
     ]);
     setAccounts(a);
-    setTxs(t);
+    setTxs(txPage.items || []);
+    const cursor =
+      txPage.nextBefore && txPage.nextBeforeId
+        ? { before: txPage.nextBefore, beforeId: txPage.nextBeforeId }
+        : null;
+    if (txPage.hasMore) {
+      setListScope("month");
+      setListHasMore(true);
+      setListCursor(cursor);
+    } else {
+      // Month fully loaded (or empty) — next scroll loads prior months
+      setListScope("older");
+      setListHasMore(true);
+      setListCursor(cursor);
+    }
     setUserCats(cats);
     setLoanOpts(loansRes.loans || []);
     setCardOpts(cardsRes.items || []);
@@ -543,6 +616,91 @@ function MoneyInner() {
     if (d) setDocs(d);
   }
 
+  const loadMoreTxs = useCallback(async () => {
+    if (loadMoreLock.current || listLoadingMore || !listHasMore) return;
+    loadMoreLock.current = true;
+    setListLoadingMore(true);
+    try {
+      const txQs = new URLSearchParams({
+        month,
+        limit: String(TX_PAGE_SIZE),
+      });
+      if (loanFilter) txQs.set("loanId", loanFilter);
+      if (cardFilter) txQs.set("creditCardId", cardFilter);
+
+      if (listScope === "older") {
+        txQs.set("older", "1");
+      }
+
+      if (listCursor) {
+        txQs.set("before", listCursor.before);
+        txQs.set("beforeId", listCursor.beforeId);
+      } else if (listScope === "month") {
+        // Month exhausted without cursor — switch to older months
+        txQs.set("older", "1");
+      }
+
+      const page = await api<TxListPage>(`/transactions?${txQs.toString()}`);
+      const incoming = page.items || [];
+
+      if (incoming.length === 0) {
+        if (listScope === "month") {
+          // Try older history once
+          setListScope("older");
+          setListHasMore(true);
+          setListCursor(null);
+        } else {
+          setListHasMore(false);
+        }
+        return;
+      }
+
+      setTxs((prev) => {
+        const seen = new Set(prev.map((t) => t.id));
+        const merged = [...prev];
+        for (const t of incoming) {
+          if (!seen.has(t.id)) merged.push(t);
+        }
+        return merged;
+      });
+
+      if (page.hasMore) {
+        setListHasMore(true);
+        setListCursor(
+          page.nextBefore && page.nextBeforeId
+            ? { before: page.nextBefore, beforeId: page.nextBeforeId }
+            : null,
+        );
+      } else if (listScope === "month") {
+        // Finished selected month — continue into past months on next scroll
+        setListScope("older");
+        setListHasMore(true);
+        setListCursor(
+          page.nextBefore && page.nextBeforeId
+            ? { before: page.nextBefore, beforeId: page.nextBeforeId }
+            : null,
+        );
+      } else {
+        setListHasMore(false);
+        setListCursor(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "שגיאה בטעינת תנועות");
+      setListHasMore(false);
+    } finally {
+      setListLoadingMore(false);
+      loadMoreLock.current = false;
+    }
+  }, [
+    listLoadingMore,
+    listHasMore,
+    listScope,
+    listCursor,
+    month,
+    loanFilter,
+    cardFilter,
+  ]);
+
   useEffect(() => {
     refresh({ docs: tab === "import" }).catch((e) =>
       setError(e instanceof Error ? e.message : "שגיאה"),
@@ -550,6 +708,20 @@ function MoneyInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, tab, loanFilter, cardFilter]);
 
+  useEffect(() => {
+    const node = listSentinelRef.current;
+    if (!node || tab !== "txs") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          void loadMoreTxs();
+        }
+      },
+      { root: null, rootMargin: "240px 0px", threshold: 0 },
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [loadMoreTxs, tab, filtered.length, listHasMore]);
   function setDirFilterAndUrl(
     next: "ALL" | "INCOME" | "EXPENSE" | "TRANSFER",
   ) {
@@ -992,6 +1164,7 @@ function MoneyInner() {
       const result = await apiUpload<UploadResult>("/documents/upload", fd);
       setDraft(result);
       setEditable(result.draft.map((r) => ({ ...r })));
+      setImportDirFilter("ALL");
       setSelected(
         new Set(
           result.draft
@@ -1007,6 +1180,8 @@ function MoneyInner() {
       }
       setMsg(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`);
       form.reset();
+      setUploadFileName(null);
+      setUploadDragOver(false);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1026,6 +1201,14 @@ function MoneyInner() {
             patch.categoryKey || next.categoryKey,
             userCats,
           );
+          next.needsReview = false;
+          next.confidence = Math.max(next.confidence ?? 0.7, 0.7);
+          next.evidence = [
+            ...(next.evidence || []).filter(
+              (e) => !e.startsWith("fallback:") && !e.startsWith("conflict:"),
+            ),
+            "user:direction",
+          ];
         }
         return next;
       }),
@@ -1491,6 +1674,27 @@ function MoneyInner() {
         }
       />
 
+      <PeriodBar
+        extra={
+          budget ? (
+            <span>
+              נותר החודש{" "}
+              <strong
+                className={budget.leftover >= 0 ? "tx-in" : "tx-out"}
+              >
+                {formatIls(budget.leftover)}
+              </strong>
+              {budget.leftover > 0 && (
+                <>
+                  {" · "}
+                  <Link href={appHref("/app/goals", month)}>ליעדים ←</Link>
+                </>
+              )}
+            </span>
+          ) : null
+        }
+      />
+
       <div className="mt-grid-3 rise-2">
         <article className="mt-surface stat">
           <h3>הכנסות החודש</h3>
@@ -1541,48 +1745,6 @@ function MoneyInner() {
               ]
             : []),
         ]}
-      />
-
-      <FeelRow
-        items={[
-          {
-            emo: "להבין",
-            title: "כל שורה היא עובדה",
-            text: "לא האשמה. המידע כאן כדי שתראו שליטה, לא כדי לשפוט.",
-          },
-          {
-            emo: "להרגיש",
-            title: "מותר לנשום",
-            text: "גם הוצאה לגיטימית היא חלק מחיים שעובדים — לא «בזבוז» אוטומטי.",
-          },
-          {
-            emo: "לעשות",
-            title: "רישום קטן",
-            text: "הוסיפו תנועה אחת או ייבאו מסמך — זה כבר מחזק את התמונה.",
-            hold: true,
-          },
-        ]}
-      />
-
-      <PeriodBar
-        extra={
-          budget ? (
-            <span>
-              נותר החודש{" "}
-              <strong
-                className={budget.leftover >= 0 ? "tx-in" : "tx-out"}
-              >
-                {formatIls(budget.leftover)}
-              </strong>
-              {budget.leftover > 0 && (
-                <>
-                  {" · "}
-                  <Link href={appHref("/app/goals", month)}>ליעדים ←</Link>
-                </>
-              )}
-            </span>
-          ) : null
-        }
       />
 
       {(loanFilter || cardFilter) && tab === "txs" && (
@@ -2436,6 +2598,18 @@ function MoneyInner() {
                     >
                       + הוצאה
                     </button>
+                    {listHasMore && (
+                      <button
+                        type="button"
+                        className="btn quiet"
+                        disabled={listLoadingMore}
+                        onClick={() => void loadMoreTxs()}
+                      >
+                        {listLoadingMore
+                          ? "טוען…"
+                          : "טען חודשים קודמים"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -2483,9 +2657,28 @@ function MoneyInner() {
                         {filtered.map((t) => renderDenseRow(t, true))}
                       </div>
                     )}
-                {filtered.length >= 500 && (
-                  <p className="muted" style={{ fontSize: "0.85rem" }}>
-                    מוצגות עד 500 תנועות בחודש.
+                <div
+                  ref={listSentinelRef}
+                  className="tx-list-sentinel"
+                  aria-hidden
+                />
+                {listLoadingMore && (
+                  <p className="muted tx-list-more-status">טוען עוד תנועות…</p>
+                )}
+                {!listLoadingMore && listHasMore && filtered.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn quiet tx-list-more-btn"
+                    onClick={() => void loadMoreTxs()}
+                  >
+                    {listScope === "older"
+                      ? "טען חודשים קודמים"
+                      : "הצג עוד תנועות"}
+                  </button>
+                )}
+                {!listHasMore && filtered.length > 0 && listScope === "older" && (
+                  <p className="muted tx-list-more-status">
+                    אין עוד תנועות ישנות יותר
                   </p>
                 )}
               </div>
@@ -2498,27 +2691,69 @@ function MoneyInner() {
 
       {tab === "import" && (
         <>
-          <form className="card compact-form" onSubmit={onUpload}>
-            <div className="grid grid-2">
-              <label className="field">
-                <span>קובץ (CSV / PDF / תמונה)</span>
-                <input
-                  name="file"
-                  type="file"
-                  accept=".csv,.pdf,image/png,image/jpeg,image/webp,image/gif,text/csv,application/pdf"
-                  required
-                />
-              </label>
-              <label
-                className="field"
-                style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: "0.6rem",
-                  marginTop: "1.6rem",
+          <form className="card import-upload-panel" onSubmit={onUpload}>
+            <div className="import-upload-head">
+              <strong>העלאת דף חשבון</strong>
+              <p className="muted">
+                CSV, PDF או תמונה — נחלץ לטיוטה, אתם מאשרים לפני שמירה
+              </p>
+            </div>
+
+            <label
+              className={[
+                "import-file-drop",
+                uploadFileName ? "has-file" : "",
+                uploadDragOver ? "drag-over" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setUploadDragOver(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setUploadDragOver(true);
+              }}
+              onDragLeave={() => setUploadDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setUploadDragOver(false);
+                const input = e.currentTarget.querySelector(
+                  'input[type="file"]',
+                ) as HTMLInputElement | null;
+                const file = e.dataTransfer.files?.[0];
+                if (!input || !file) return;
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                setUploadFileName(file.name);
+              }}
+            >
+              <input
+                className="import-file-input"
+                name="file"
+                type="file"
+                accept=".csv,.pdf,image/png,image/jpeg,image/webp,image/gif,text/csv,application/pdf"
+                required
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  setUploadFileName(file ? file.name : null);
                 }}
-              >
+              />
+              <span className="import-file-drop-mark" aria-hidden>
+                {uploadFileName ? "✓" : "↑"}
+              </span>
+              <span className="import-file-drop-title">
+                {uploadFileName || "בחרו קובץ או גררו לכאן"}
+              </span>
+              <span className="import-file-drop-hint muted">
+                PDF · CSV · PNG / JPG עד 8MB
+              </span>
+            </label>
+
+            <div className="import-upload-actions">
+              <label className="import-keep-file">
                 <input
                   type="checkbox"
                   checked={keepFile}
@@ -2526,138 +2761,240 @@ function MoneyInner() {
                 />
                 <span>שמור קובץ מקור</span>
               </label>
+              <button className="btn" type="submit" disabled={busy}>
+                {busy ? "מחלץ…" : "העלאה וחילוץ"}
+              </button>
             </div>
-            <button className="btn" type="submit" disabled={busy}>
-              העלאה וחילוץ
-            </button>
           </form>
 
           {draft && (
-            <section className="card">
+            <section className="card import-draft-panel">
               <h2 style={{ marginTop: 0 }}>
                 טיוטה · {draft.originalName}
               </h2>
-              {draft.quality && (
-                <p className="muted" style={{ marginTop: 0 }}>
-                  {draft.quality.income} הכנסות · {draft.quality.expense}{" "}
-                  הוצאות
-                  {draft.quality.transfer
-                    ? ` · ${draft.quality.transfer} העברות`
-                    : ""}
-                  {draft.quality.needsReview
-                    ? ` · ${draft.quality.needsReview} לתיקון`
-                    : ""}
-                  {draft.quality.duplicates
-                    ? ` · ${draft.quality.duplicates} כפולות`
-                    : ""}
-                </p>
-              )}
-              <div style={{ overflowX: "auto" }}>
-                <table className="tx-table">
-                  <thead>
-                    <tr>
-                      <th />
-                      <th>תאריך</th>
-                      <th>עבור מה</th>
-                      <th>כיוון</th>
-                      <th>קטגוריה</th>
-                      <th>סכום</th>
-                      <th>ביטחון</th>
-                      <th>רמזים</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editable.map((row, i) => (
-                      <tr
-                        key={`${row.bookedAt}-${i}`}
-                        className={
-                          row.duplicate || (row.confidence ?? 1) < 0.45
-                            ? "row-warn"
-                            : undefined
-                        }
-                      >
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selected.has(i)}
-                            disabled={row.duplicate}
-                            onChange={() => {
-                              setSelected((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(i)) next.delete(i);
-                                else next.add(i);
-                                return next;
-                              });
-                            }}
-                          />
-                        </td>
-                        <td>
-                          {new Date(row.bookedAt).toLocaleDateString("he-IL")}
-                        </td>
-                        <td>
-                          <input
-                            className="cell-input"
-                            value={row.description}
-                            onChange={(e) =>
-                              patchRow(i, { description: e.target.value })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <select
-                            value={row.direction}
-                            onChange={(e) =>
-                              patchRow(i, {
-                                direction: e.target
-                                  .value as DraftRow["direction"],
-                              })
-                            }
-                          >
-                            <option value="EXPENSE">הוצאה</option>
-                            <option value="INCOME">הכנסה</option>
-                            <option value="TRANSFER">העברה</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            value={ensureCategoryForDirection(
-                              row.direction,
-                              row.categoryKey,
-                              userCats,
-                            )}
-                            onChange={(e) =>
-                              patchRow(i, { categoryKey: e.target.value })
-                            }
-                          >
-                            {categoriesForDirection(row.direction, userCats).map(
-                              (c) => (
-                              <option key={c.key} value={c.key}>
-                                {c.labelHe}
-                              </option>
-                            ),
-                            )}
-                          </select>
-                        </td>
-                        <td>{formatIls(row.amount)}</td>
-                        <td className="muted" style={{ fontSize: "0.75rem" }}>
-                          {row.duplicate
-                            ? "כפול"
-                            : row.confidence != null
-                              ? `${Math.round(row.confidence * 100)}%`
-                              : ""}
-                        </td>
-                        <td className="muted" style={{ fontSize: "0.72rem", maxWidth: "9rem" }}>
-                          {(row.evidence || [])
-                            .slice(0, 3)
-                            .map(evidenceLabelHe)
-                            .filter((v, i, a) => a.indexOf(v) === i)
-                            .join(" · ") || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {(() => {
+                const incomeRows = editable.filter((r) => r.direction === "INCOME");
+                const expenseRows = editable.filter((r) => r.direction === "EXPENSE");
+                const reviewRows = editable.filter((r) => rowNeedsReview(r));
+                const incomeSum = incomeRows.reduce((s, r) => s + r.amount, 0);
+                const expenseSum = expenseRows.reduce((s, r) => s + r.amount, 0);
+                const filteredIndexes = editable
+                  .map((row, i) => ({ row, i }))
+                  .filter(({ row }) => {
+                    if (importDirFilter === "INCOME") return row.direction === "INCOME";
+                    if (importDirFilter === "EXPENSE") return row.direction === "EXPENSE";
+                    if (importDirFilter === "REVIEW") return rowNeedsReview(row);
+                    return true;
+                  });
+                return (
+                  <>
+                    <div className="import-dir-summary">
+                      <span className="mt-chip good">
+                        הכנסות <b>{incomeRows.length}</b>
+                        <strong className="tx-in">
+                          {" "}
+                          +{formatIls(incomeSum)}
+                        </strong>
+                      </span>
+                      <span className="mt-chip warn">
+                        הוצאות <b>{expenseRows.length}</b>
+                        <strong className="tx-out">
+                          {" "}
+                          −{formatIls(expenseSum)}
+                        </strong>
+                      </span>
+                      {reviewRows.length > 0 && (
+                        <span className="mt-chip">
+                          לתיקון <b>{reviewRows.length}</b>
+                        </span>
+                      )}
+                      {draft.quality?.duplicates ? (
+                        <span className="mt-chip">
+                          כפולות <b>{draft.quality.duplicates}</b>
+                        </span>
+                      ) : null}
+                    </div>
+                    {draft.quality?.reconcileWarn &&
+                      draft.quality.statementDelta != null &&
+                      draft.quality.signedSum != null && (
+                        <p className="form-error import-reconcile-warn" role="status">
+                          סכום הייבוא ({formatIls(draft.quality.signedSum)}) לא
+                          תואם את שינוי היתרה בדף (
+                          {formatIls(draft.quality.statementDelta)}) — בדקו
+                          כיוונים.
+                        </p>
+                      )}
+                    <div className="dir-chips import-dir-filters" role="tablist" aria-label="סינון כיוון">
+                      {(
+                        [
+                          ["ALL", "הכל", editable.length],
+                          ["INCOME", "הכנסות", incomeRows.length],
+                          ["EXPENSE", "הוצאות", expenseRows.length],
+                          ["REVIEW", "לתיקון", reviewRows.length],
+                        ] as const
+                      ).map(([key, label, count]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          className={`dir-chip${
+                            importDirFilter === key ? " active" : ""
+                          }${key === "INCOME" ? " income" : ""}${
+                            key === "EXPENSE" ? " expense" : ""
+                          }`}
+                          aria-pressed={importDirFilter === key}
+                          onClick={() => setImportDirFilter(key)}
+                        >
+                          {label}
+                          <span className="dir-chip-count">{count}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="tx-table import-draft-table">
+                        <thead>
+                          <tr>
+                            <th />
+                            <th>תאריך</th>
+                            <th>עבור מה</th>
+                            <th>כיוון</th>
+                            <th>קטגוריה</th>
+                            <th>סכום</th>
+                            <th>ביטחון</th>
+                            <th>רמזים</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredIndexes.map(({ row, i }) => (
+                            <tr
+                              key={`${row.bookedAt}-${i}`}
+                              className={
+                                rowNeedsReview(row)
+                                  ? "row-warn"
+                                  : row.direction === "INCOME"
+                                    ? "import-row-income"
+                                    : row.direction === "EXPENSE"
+                                      ? "import-row-expense"
+                                      : undefined
+                              }
+                            >
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(i)}
+                                  disabled={row.duplicate}
+                                  onChange={() => {
+                                    setSelected((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(i)) next.delete(i);
+                                      else next.add(i);
+                                      return next;
+                                    });
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                {new Date(row.bookedAt).toLocaleDateString(
+                                  "he-IL",
+                                )}
+                              </td>
+                              <td>
+                                <input
+                                  className="cell-input"
+                                  value={row.description}
+                                  onChange={(e) =>
+                                    patchRow(i, {
+                                      description: e.target.value,
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <select
+                                  value={row.direction}
+                                  onChange={(e) =>
+                                    patchRow(i, {
+                                      direction: e.target
+                                        .value as DraftRow["direction"],
+                                    })
+                                  }
+                                >
+                                  <option value="EXPENSE">הוצאה</option>
+                                  <option value="INCOME">הכנסה</option>
+                                  <option value="TRANSFER">העברה</option>
+                                </select>
+                              </td>
+                              <td>
+                                <select
+                                  value={ensureCategoryForDirection(
+                                    row.direction,
+                                    row.categoryKey,
+                                    userCats,
+                                  )}
+                                  onChange={(e) =>
+                                    patchRow(i, {
+                                      categoryKey: e.target.value,
+                                    })
+                                  }
+                                >
+                                  {categoriesForDirection(
+                                    row.direction,
+                                    userCats,
+                                  ).map((c) => (
+                                    <option key={c.key} value={c.key}>
+                                      {c.labelHe}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td
+                                className={
+                                  row.direction === "INCOME"
+                                    ? "tx-in"
+                                    : row.direction === "EXPENSE"
+                                      ? "tx-out"
+                                      : undefined
+                                }
+                              >
+                                {row.direction === "INCOME"
+                                  ? "+"
+                                  : row.direction === "EXPENSE"
+                                    ? "−"
+                                    : ""}
+                                {formatIls(row.amount)}
+                              </td>
+                              <td
+                                className="muted"
+                                style={{ fontSize: "0.75rem" }}
+                              >
+                                {row.duplicate
+                                  ? "כפול"
+                                  : rowNeedsReview(row)
+                                    ? "לבדיקה"
+                                    : row.confidence != null
+                                      ? `${Math.round(row.confidence * 100)}%`
+                                      : ""}
+                              </td>
+                              <td
+                                className="muted"
+                                style={{
+                                  fontSize: "0.72rem",
+                                  maxWidth: "9rem",
+                                }}
+                              >
+                                {(row.evidence || [])
+                                  .slice(0, 3)
+                                  .map(evidenceLabelHe)
+                                  .filter((v, idx, a) => a.indexOf(v) === idx)
+                                  .join(" · ") || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
               <div className="doc-actions sticky-actions">
                 <button
                   className="btn"

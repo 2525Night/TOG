@@ -1,6 +1,6 @@
 # MoneyTail
 
-**גרסה: V1.0** (`v1.0.0`)
+**גרסה: MTail3** (`v3.0.0` / תג `MTail3`)
 
 **MoneyTail** — מערכת בינה פיננסית אישית לישראל (עברית RTL, ש״ח).
 
@@ -18,9 +18,10 @@
 ## מבנה
 
 ```
-apps/web      — אפליקציית משתמש (Next.js, פורט 3000)
+apps/web      — אפליקציית משתמש (Next.js, פורט 3005)
 apps/admin    — לוח מנהל (Next.js, פורט 3002)
-services/api  — NestJS + Prisma + PostgreSQL (פורט 3001)
+apps/mobile   — מעטפת Android / Capacitor (MTail3)
+services/api  — NestJS + Prisma + PostgreSQL/SQLite (פורט 3001)
 packages/shared — טיפוסים וקטגוריות משותפים
 ```
 
@@ -57,19 +58,34 @@ npm run dev:admin
   - סיסמה: `Pa$$word`  
 - API health: http://localhost:3001/api/health  
 
+## Android (MTail3)
+
+מעטפת Capacitor ב־`apps/mobile`. פירוט מלא: [`apps/mobile/README.md`](apps/mobile/README.md)
+
+```bash
+npm install
+npm run mobile:add    # פעם אחת — יוצר apps/mobile/android
+npm run mobile:sync
+npm run mobile:open   # Android Studio
+# או אחרי התקנת JDK+SDK:
+npm run mobile:apk
+```
+
 ## מה כבר עובד (Phase 1)
 
 - הרשמה / התחברות (JWT)
 - חשבונות, תנועות, יעדים
 - דשבורד: יתרה, תזרים, שלמות תמונה, ציון בריאות, סיכון משיכת יתר, המלצות
 - אדמין: רשימת משתמשים
+- ייבוא מסמכים עם כיוון לפי יתרה מצטברת
+- מעטפת Android (Capacitor) — דורשת Android Studio לבניית APK
 
 ## מה עדיין לא
 
 - Roey (צ׳אט)
 - Open Banking (הפועלים / ONE ZERO) — דורש רישיון
 - אחסון ענן ב־IL בייצור
-- אפליקציית Android
+- APK חתום לחנות / מצב offline מלא במובייל
 - מודיעין שוק מתקדם
 
 ייבוא מסמכים זמין תחת **תנועות → ייבוא**. כניסה ראשונית מחדש — בוטלה מהתור.

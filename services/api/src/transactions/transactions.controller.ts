@@ -28,11 +28,19 @@ export class TransactionsController {
     @Query("month") month?: string,
     @Query("loanId") loanId?: string,
     @Query("creditCardId") creditCardId?: string,
+    @Query("limit") limit?: string,
+    @Query("before") before?: string,
+    @Query("beforeId") beforeId?: string,
+    @Query("older") older?: string,
   ) {
     return this.transactions.list(user.userId, {
       month: month || undefined,
       loanId: loanId || undefined,
       creditCardId: creditCardId || undefined,
+      limit: limit ? Number(limit) : undefined,
+      before: before || undefined,
+      beforeId: beforeId || undefined,
+      older: older || undefined,
     });
   }
 

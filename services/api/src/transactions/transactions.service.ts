@@ -152,29 +152,75 @@ export class TransactionsService {
     }
   }
 
-  list(
+  async list(
     userId: string,
     opts?: {
       month?: string;
       loanId?: string;
       creditCardId?: string;
+      limit?: number;
+      before?: string;
+      beforeId?: string;
+      /** After the selected month is exhausted — load txs before month start */
+      older?: boolean | string;
     },
   ) {
+    const limit = Math.min(
+      Math.max(Number(opts?.limit) || 40, 1),
+      100,
+    );
+    const wantOlder =
+      opts?.older === true ||
+      opts?.older === "1" ||
+      opts?.older === "true";
+
     const where: Prisma.TransactionWhereInput = { userId };
-    if (opts?.month && /^\d{4}-\d{2}$/.test(opts.month)) {
-      const [y, m] = opts.month.split("-").map(Number);
-      where.bookedAt = {
-        gte: new Date(y, m - 1, 1),
-        lt: new Date(y, m, 1),
-      };
-    }
     if (opts?.loanId) where.loanId = opts.loanId;
     if (opts?.creditCardId) where.creditCardId = opts.creditCardId;
 
-    return this.prisma.transaction.findMany({
+    let monthStart: Date | null = null;
+    let monthEnd: Date | null = null;
+    if (opts?.month && /^\d{4}-\d{2}$/.test(opts.month)) {
+      const [y, m] = opts.month.split("-").map(Number);
+      monthStart = new Date(y, m - 1, 1);
+      monthEnd = new Date(y, m, 1);
+    }
+
+    const beforeDate =
+      opts?.before && !Number.isNaN(Date.parse(opts.before))
+        ? new Date(opts.before)
+        : null;
+    const beforeId = opts?.beforeId?.trim() || null;
+
+    const andParts: Prisma.TransactionWhereInput[] = [];
+
+    if (monthStart && monthEnd && !wantOlder) {
+      andParts.push({
+        bookedAt: { gte: monthStart, lt: monthEnd },
+      });
+    } else if (monthStart && wantOlder) {
+      andParts.push({ bookedAt: { lt: monthStart } });
+    }
+
+    if (beforeDate) {
+      if (beforeId) {
+        andParts.push({
+          OR: [
+            { bookedAt: { lt: beforeDate } },
+            { bookedAt: beforeDate, id: { lt: beforeId } },
+          ],
+        });
+      } else {
+        andParts.push({ bookedAt: { lt: beforeDate } });
+      }
+    }
+
+    if (andParts.length) where.AND = andParts;
+
+    const rows = await this.prisma.transaction.findMany({
       where,
-      orderBy: { bookedAt: "desc" },
-      take: opts?.month || opts?.loanId || opts?.creditCardId ? 500 : 120,
+      orderBy: [{ bookedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
       include: {
         account: { select: { id: true, name: true } },
         loan: { select: { id: true, name: true, provider: true } },
@@ -183,6 +229,17 @@ export class TransactionsService {
         },
       },
     });
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+
+    return {
+      items,
+      hasMore,
+      nextBefore: last ? last.bookedAt.toISOString() : null,
+      nextBeforeId: last ? last.id : null,
+    };
   }
 
   async create(userId: string, dto: CreateTransactionDto) {
