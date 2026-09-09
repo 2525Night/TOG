@@ -484,6 +484,16 @@ a,
   display: inline-block;
   transform-origin: left bottom;
 }
+.brand-lockup .five {
+  color: var(--mt-mint);
+  font-size: 0.95rem;
+  font-style: normal;
+  font-weight: 900;
+  margin-inline-start: 0.14em;
+  align-self: flex-end;
+  transform: translateY(-0.12em);
+  letter-spacing: 0;
+}
 .brand-lockup--sm .ring {
   width: 0.85rem;
   height: 0.85rem;
@@ -500,12 +510,20 @@ a,
 .brand-lockup--sm .ess {
   font-size: 0.78rem;
 }
+.brand-lockup--sm .five {
+  font-size: 0.72rem;
+  margin-inline-start: 0.1em;
+  transform: translateY(-0.06em);
+}
 .brand-lockup--on-light .m,
 .brand-lockup--on-light .ess {
   color: var(--mt-ink);
 }
 .brand-lockup--on-light .tail {
   -webkit-text-stroke-color: var(--mt-mint-deep);
+}
+.brand-lockup--on-light .five {
+  color: var(--mt-mint-deep);
 }
 .brand-lockup--lg .ring {
   width: 1.55rem;
@@ -522,6 +540,11 @@ a,
 }
 .brand-lockup--lg .ess {
   font-size: 1.45rem;
+}
+.brand-lockup--lg .five {
+  font-size: 1.2rem;
+  margin-inline-start: 0.16em;
+  transform: translateY(-0.18em);
 }
 
 .sidebar-nav {
@@ -617,6 +640,9 @@ a,
 }
 .mobile-topbar .brand-lockup--on-light .tail {
   -webkit-text-stroke-color: #9fd0c2;
+}
+.mobile-topbar .brand-lockup--on-light .five {
+  color: #9fd0c2;
 }
 
 .icon-btn {
@@ -1123,18 +1149,6 @@ a,
 
 .home-gate .home-brand-block .brand-lockup {
   margin-bottom: 0;
-}
-
-.home-edition {
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(243, 247, 250, 0.55);
-}
-
-.home-edition span {
-  color: var(--mt-mint);
-  margin-inline-start: 0.12em;
 }
 
 .home-lead {

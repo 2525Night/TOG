@@ -1,4 +1,4 @@
-/** Canonical MoneyTail shared types (Israel / ILS). */
+/** Canonical MoneyTail5 shared types (Israel / ILS). */
 
 export type SourceType =
   | "USER_INPUT"

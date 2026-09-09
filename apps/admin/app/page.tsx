@@ -53,7 +53,7 @@ export default function AdminPage() {
 
   return (
     <main style={{ maxWidth: 900, margin: "0 auto", padding: "1.5rem" }}>
-      <h1>MoneyTail · לוח מנהל</h1>
+      <h1>MoneyTail5 · לוח מנהל</h1>
       <p style={{ color: "#9ca3af" }}>
         ניהול משתמשים בסיסי · Roey אינו חלק ממסך זה
       </p>

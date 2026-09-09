@@ -1,8 +1,8 @@
-# MoneyTail
+# MoneyTail5
 
-**גרסה: MTail3** (`v3.0.0` / תג `MTail3`)
+**גרסה: MoneyTail5** (`v5.0.0` / תג `MoneyTail5`)
 
-**MoneyTail** — מערכת בינה פיננסית אישית לישראל (עברית RTL, ש״ח).
+**MoneyTail5** — מערכת בינה פיננסית אישית לישראל (עברית RTL, ש״ח). מלווה במסע הכסף.
 
 העוזר האופציונלי: **Roey** (לא מסך הבית).
 
@@ -20,7 +20,7 @@
 ```
 apps/web      — אפליקציית משתמש (Next.js, פורט 3005)
 apps/admin    — לוח מנהל (Next.js, פורט 3002)
-apps/mobile   — מעטפת Android / Capacitor (MTail3)
+apps/mobile   — מעטפת Android / Capacitor (MoneyTail5)
 services/api  — NestJS + Prisma + PostgreSQL/SQLite (פורט 3001)
 packages/shared — טיפוסים וקטגוריות משותפים
 ```
@@ -58,9 +58,9 @@ npm run dev:admin
   - סיסמה: `Pa$$word`  
 - API health: http://localhost:3001/api/health  
 
-## Android (MTail3) — בקצרה
+## Android (MoneyTail5) — בקצרה
 
-האפליקציה בטלפון היא **חלון** לאתר MoneyTail (לא מוצר נפרד).
+האפליקציה בטלפון היא **חלון** לאתר MoneyTail5 (לא מוצר נפרד).
 
 1. התקינו [Android Studio](https://developer.android.com/studio)
 2. ודאו ש־API + Web רצים (`3001` / `3005`)

@@ -1,4 +1,4 @@
-# fly.toml at monorepo root — MoneyTail API
+# fly.toml at monorepo root — MoneyTail5 API
 app = 'moneytail-api'
 primary_region = 'fra'
 

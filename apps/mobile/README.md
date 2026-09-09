@@ -1,8 +1,8 @@
-# התקנת MoneyTail על אנדרואיד (MTail3)
+# התקנת MoneyTail5 על אנדרואיד
 
 ## מה זה בכלל?
 
-MoneyTail רצה היום בדפדפן (מחשב).  
+MoneyTail5 רצה היום בדפדפן (מחשב).  
 באנדרואיד בנינו **מעטפת** — אפליקציה שפותחת את אותו מסך בתוך הטלפון.
 
 חשוב לדעת:
@@ -16,7 +16,7 @@ MoneyTail רצה היום בדפדפן (מחשב).
 
 1. התקינו [Android Studio](https://developer.android.com/studio) (ההתקנה הרגילה מספיקה).
 2. בפתחה הראשונה בחרו Install / Standard וסיימו עד הסוף.
-3. ודאו ש־MoneyTail רץ במחשב:
+3. ודאו ש־MoneyTail5 רץ במחשב:
    - API: פורט **3001**
    - אתר: פורט **3005**  
    (כמו תמיד: `npm run dev:api` ו־`npm run dev:web`)
@@ -51,7 +51,7 @@ npm run mobile:open
 2. אם אין מכשיר: Device Manager → Create Device → בחרו Pixel → Finish.
 3. לחצו ▶ Run.
 
-האפליקציה תיפתח באמולטור ותטען את MoneyTail מהמחשב  
+האפליקציה תיפתח באמולטור ותטען את MoneyTail5 מהמחשב  
 (`http://10.0.2.2:3005` — זה “localhost של המחשב” מנקודת מבט של האמולטור).
 
 אם רואים מסך לבן / שגיאת רשת: ודאו ש־`npm run dev:web` רץ על 3005.
@@ -122,4 +122,4 @@ npm run mobile:sync
 1. התקינו Android Studio  
 2. `npm run mobile:sync` ואז `npm run mobile:open`  
 3. לחצו ▶ להרצה, או Build APK להתקנה על הטלפון  
-4. האפליקציה מציגה את אותו MoneyTail — כל עוד השרת במחשב רץ
+4. האפליקציה מציגה את אותו MoneyTail5 — כל עוד השרת במחשב רץ

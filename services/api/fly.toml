@@ -1,4 +1,4 @@
-# fly.toml — MoneyTail API (SQLite on persistent volume for MVP remote)
+# fly.toml — MoneyTail5 API (SQLite on persistent volume for MVP remote)
 app = 'moneytail-api'
 primary_region = 'fra'
 

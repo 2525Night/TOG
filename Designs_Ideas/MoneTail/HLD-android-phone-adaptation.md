@@ -1,6 +1,6 @@
 # HLD · Layered Clarity → Android Phone Adaptation
 
-**מוצר:** MoneyTail  
+**מוצר:** MoneyTail5  
 **תאריך:** 2026-09-09  
 **סטטוס:** Design Idea (לא יישום מחייב)  
 **קונספט מקור:** Layered Clarity (בהירות + רגש)  
@@ -17,7 +17,7 @@
 - טוקנים `--mt-*` (mint / sky / amber / ink)
 - מבנה Clarity: תשובה אחת → משמעות → פעולות → פירוט
 - תפריט צד RTL + PeriodBar חודשי
-- מיתוג MoneyTail כגיבור כרום
+- מיתוג MoneyTail5 כגיבור כרום
 
 **מה משתנה (אדפטציה בלבד)**
 - צפיפות, מרווחים, יעדי מגע

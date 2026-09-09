@@ -373,7 +373,7 @@ export class IntelligenceService {
         `tx,${csvEscape(t.description || t.categoryLabelHe)},${t.amount},${t.direction}`,
       );
     }
-    return `# MoneyTail balance ${month}\n${lines.join("\n")}\n`;
+    return `# MoneyTail5 balance ${month}\n${lines.join("\n")}\n`;
   }
 
   async analyze(

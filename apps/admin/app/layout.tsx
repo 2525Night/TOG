@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "MoneyTail Admin",
+  title: "MoneyTail5 Admin",
 };
 
 export default function RootLayout({

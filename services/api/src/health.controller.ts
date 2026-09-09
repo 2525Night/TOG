@@ -6,7 +6,7 @@ export class HealthController {
   check() {
     return {
       ok: true,
-      product: "MoneyTail",
+      product: "MoneyTail5",
       assistant: "Roey",
       jurisdiction: "IL",
     };

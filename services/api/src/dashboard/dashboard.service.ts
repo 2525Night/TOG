@@ -113,7 +113,7 @@ export class DashboardService {
         : 0);
 
     return {
-      product: "MoneyTail",
+      product: "MoneyTail5",
       currency: "ILS",
       formulaVersion: facts.formulaVersion,
       monthFacts: facts,

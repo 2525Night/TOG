@@ -12,9 +12,6 @@ export default function HomePage() {
           <p className="home-kicker">משקפים · מחליטים · מתקדמים</p>
           <div className="home-brand-block">
             <BrandLockup size="lg" />
-            <span className="home-edition" aria-label="MoneyTail5">
-              MoneyTail<span>5</span>
-            </span>
           </div>
           <h1 className="home-lead">
             מלווה אתכם במסע הכסף — ממעקב ודפוסים עד הצעד הבא
