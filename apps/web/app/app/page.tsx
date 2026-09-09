@@ -432,7 +432,7 @@ function DashboardInner() {
               >
                 {formatIls(z)}
               </div>
-              {firstAttention && !showPartialTrust ? (
+              {firstAttention && !showPartialTrust && !sparseSetup ? (
                 <p className="insight-conclusion" style={{ margin: "0.45rem 0 0" }}>
                   {firstAttention.conclusionHe || firstAttention.titleHe}
                 </p>
@@ -440,6 +440,8 @@ function DashboardInner() {
               <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                 {showPartialTrust
                   ? "מחושב ממה שרשום במערכת — בדקו שהיתרה והתחייבויות מעודכנים"
+                  : sparseSetup
+                    ? "יתרה פחות שמור לתשלומים מההקמה — יתחדד עם תנועות"
                   : firstAttention
                     ? firstAttention.meaningHe || firstAttention.bodyHe
                     : z < 0
@@ -467,13 +469,13 @@ function DashboardInner() {
               </span>
             </div>
             <div className="clarity-actions">
-              {firstAttention ? (
+              {firstAttention && !sparseSetup ? (
                 <Link className="btn" href={firstAttention.href}>
                   {firstAttention.ctaHe || "לטפל עכשיו"}
                 </Link>
               ) : (
                 <Link className="btn" href={`/app/money?month=${month}`}>
-                  הוסף תנועה
+                  {sparseSetup ? "הוסיפו תנועה ראשונה" : "הוסף תנועה"}
                 </Link>
               )}
               <button
@@ -534,7 +536,10 @@ function DashboardInner() {
             ? [
                 {
                   label: "חיץ להפתעות",
-                  value: `${Math.round(data.emergencyCushion.progressPct)}%`,
+                  value:
+                    data.emergencyCushion.progressPct < 1
+                      ? `יעד ${formatIls(data.emergencyCushion.targetAmount)}`
+                      : `${Math.round(data.emergencyCushion.progressPct)}%`,
                 },
               ]
             : data.goals[0]
@@ -576,7 +581,8 @@ function DashboardInner() {
       />
       )}
 
-      {(data.dataGaps || []).map((g) => (
+      {!sparseSetup &&
+        (data.dataGaps || []).map((g) => (
         <section key={g.id} className="card alert-card insight-card" role="status">
           <div className="insight-block">
             <strong className="insight-conclusion">{g.titleHe}</strong>
@@ -590,7 +596,7 @@ function DashboardInner() {
         </section>
       ))}
 
-      {(data.attention || []).length > 0 && (
+      {!sparseSetup && (data.attention || []).length > 0 && (
         <section className="card" aria-label="מסקנות לחודש">
           <h2 style={{ marginTop: 0, marginBottom: "0.65rem" }}>
             מסקנות לחודש

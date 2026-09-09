@@ -115,13 +115,13 @@ type MonthPickerProps = {
   className?: string;
 };
 
-/** Shared month select (past + up to 12 future) + optional custom picker. */
+/** Shared month select (recent past + near future) + optional custom picker. */
 function MonthPicker({ quiet, className }: MonthPickerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
   usePersistMonthToUrl();
-  const options = useMemo(() => monthOptionsAround(12, 12), []);
+  const options = useMemo(() => monthOptionsAround(6, 2), []);
   const month = resolveAppMonth(search.get("month"));
   const inList = options.includes(month);
   const nowKey = currentMonthKey();
