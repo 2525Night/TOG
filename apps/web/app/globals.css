@@ -2191,6 +2191,7 @@ a,
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
     border-inline-end: 0;
     border-inline-start: 1px solid rgba(255, 255, 255, 0.18);
+    z-index: 45;
   }
 
   .sidebar.open {
@@ -2202,7 +2203,7 @@ a,
     position: fixed;
     inset: 0;
     background: rgba(8, 30, 28, 0.45);
-    z-index: 28;
+    z-index: 42;
   }
 
   :root {
