@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, SourceType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { categoryLabelHe, categoryNature } from "./nature";
 import { MonthFactsService } from "../month-facts/month-facts.service";
@@ -82,6 +82,10 @@ export class BudgetService {
       payVia?: "ACCOUNT" | "CREDIT_CARD";
       creditCardId?: string | null;
     },
+    options: {
+      sourceType?: SourceType;
+      auditAction?: string;
+    } = {},
   ) {
     const payVia = body.payVia === "CREDIT_CARD" ? "CREDIT_CARD" : "ACCOUNT";
     let creditCardId: string | null = null;
@@ -96,7 +100,7 @@ export class BudgetService {
       creditCardId = card.id;
     }
 
-    return this.prisma.budgetCommitment.create({
+    const created = await this.prisma.budgetCommitment.create({
       data: {
         userId,
         titleHe: body.titleHe,
@@ -111,11 +115,24 @@ export class BudgetService {
         startMonth: body.startMonth ?? null,
         endMonth: body.endMonth ?? null,
         untilGoal: body.untilGoal ?? false,
-        sourceType: "USER_INPUT",
+        sourceType: options.sourceType ?? SourceType.USER_INPUT,
         userConfirmed: true,
         active: true,
       },
     });
+    if (options.auditAction) {
+      await this.prisma.auditEvent.create({
+        data: {
+          userId,
+          action: options.auditAction,
+          meta: JSON.stringify({
+            commitmentId: created.id,
+            sourceType: created.sourceType,
+          }),
+        },
+      });
+    }
+    return created;
   }
 
   async suggestions(userId: string) {

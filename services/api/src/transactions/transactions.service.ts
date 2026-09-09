@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { EconomicRole, Prisma, TxDirection } from "@prisma/client";
+import {
+  EconomicRole,
+  Prisma,
+  SourceType,
+  TxDirection,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MonthFactsService } from "../month-facts/month-facts.service";
 import {
@@ -12,6 +17,10 @@ import {
 } from "./transactions.dto";
 
 type DbClient = Prisma.TransactionClient | PrismaService;
+type TransactionWriteOptions = {
+  sourceType?: SourceType;
+  auditAction?: string;
+};
 
 function balanceSignedDelta(
   direction: TxDirection,
@@ -242,7 +251,12 @@ export class TransactionsService {
     };
   }
 
-  async create(userId: string, dto: CreateTransactionDto) {
+  async create(
+    userId: string,
+    dto: CreateTransactionDto,
+    options: TransactionWriteOptions = {},
+  ) {
+    const sourceType = options.sourceType ?? SourceType.USER_INPUT;
     const economicRole = dto.economicRole ?? EconomicRole.STANDARD;
     await this.assertLinks(userId, {
       loanId: dto.loanId,
@@ -308,7 +322,7 @@ export class TransactionsService {
           categoryKey: dto.categoryKey,
           description: dto.description || null,
           bookedAt: new Date(dto.bookedAt),
-          sourceType: "USER_INPUT",
+          sourceType,
           userConfirmed: true,
           economicRole,
           loanId: dto.loanId || null,
@@ -342,10 +356,10 @@ export class TransactionsService {
       await db.auditEvent.create({
         data: {
           userId,
-          action: "TRANSACTION_CREATED",
+          action: options.auditAction ?? "TRANSACTION_CREATED",
           meta: JSON.stringify({
             transactionId: created.id,
-            sourceType: "USER_INPUT",
+            sourceType,
             economicRole,
           }),
         },
@@ -358,7 +372,12 @@ export class TransactionsService {
     return tx;
   }
 
-  async update(userId: string, id: string, dto: UpdateTransactionDto) {
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+    options: TransactionWriteOptions = {},
+  ) {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, userId },
     });
@@ -456,6 +475,9 @@ export class TransactionsService {
           creditCardId: nextCardId,
           installmentPlanId: nextPlanId,
           userConfirmed: true,
+          ...(options.sourceType
+            ? { sourceType: options.sourceType }
+            : {}),
         },
       });
 
@@ -486,6 +508,19 @@ export class TransactionsService {
         creditCardId: nextCardId,
         sign: 1,
       });
+
+      if (options.auditAction) {
+        await db.auditEvent.create({
+          data: {
+            userId,
+            action: options.auditAction,
+            meta: JSON.stringify({
+              transactionId: id,
+              sourceType: options.sourceType ?? existing.sourceType,
+            }),
+          },
+        });
+      }
 
       return row;
     });

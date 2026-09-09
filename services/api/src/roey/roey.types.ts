@@ -37,6 +37,12 @@ export type RoeyForecast = {
   startingAvailable: number;
   confidence: RoeyConfidence;
   assumptionsHe: string[];
+  marketContext: {
+    policyRatePct: number | null;
+    annualCpiPct: number | null;
+    observedAt: string | null;
+    sourceNames: string[];
+  };
   scenarios: RoeyForecastScenario[];
 };
 

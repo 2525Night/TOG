@@ -12,6 +12,14 @@ import {
 import { AuthUser, CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards";
 import {
+  ApproveRoeyActionDto,
+  CreateRoeyActionProposalDto,
+  RejectRoeyActionDto,
+} from "./roey-action.dto";
+import { RoeyActionService } from "./roey-action.service";
+import { MarketDataService } from "./market-data.service";
+import { RoeyNudgeService } from "./roey-nudge.service";
+import {
   ConnectGoogleAiStudioDto,
   RoeyChatDto,
   SelectRoeyModelDto,
@@ -22,7 +30,12 @@ import { RoeyService } from "./roey.service";
 @Controller("roey")
 @UseGuards(JwtAuthGuard)
 export class RoeyController {
-  constructor(private readonly roey: RoeyService) {}
+  constructor(
+    private readonly roey: RoeyService,
+    private readonly actions: RoeyActionService,
+    private readonly market: MarketDataService,
+    private readonly nudges: RoeyNudgeService,
+  ) {}
 
   @Get("connections/google-ai-studio")
   connection(@CurrentUser() user: AuthUser) {
@@ -113,5 +126,62 @@ export class RoeyController {
     @Param("id") id: string,
   ) {
     return this.roey.deleteConversation(user.userId, id);
+  }
+
+  @Get("actions")
+  actionsList(@CurrentUser() user: AuthUser) {
+    return this.actions.list(user.userId);
+  }
+
+  @Get("market")
+  marketSnapshot() {
+    return this.market.current();
+  }
+
+  @Post("actions/propose")
+  proposeAction(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateRoeyActionProposalDto,
+  ) {
+    return this.actions.propose(user.userId, dto);
+  }
+
+  @Post("actions/:id/approve")
+  approveAction(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body() dto: ApproveRoeyActionDto,
+  ) {
+    return this.actions.approve(user.userId, id, dto);
+  }
+
+  @Post("actions/:id/reject")
+  rejectAction(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+    @Body() dto: RejectRoeyActionDto,
+  ) {
+    return this.actions.reject(user.userId, id, dto);
+  }
+
+  @Get("nudges")
+  nudgesList(@CurrentUser() user: AuthUser) {
+    return this.nudges.list(user.userId);
+  }
+
+  @Post("nudges/:id/dismiss")
+  dismissNudge(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.nudges.dismiss(user.userId, id);
+  }
+
+  @Post("nudges/:id/snooze")
+  snoozeNudge(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ) {
+    return this.nudges.snooze(user.userId, id);
   }
 }

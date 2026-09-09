@@ -270,6 +270,15 @@ export class RoeyService {
                 sourcesJson: JSON.stringify(
                   built.factsUsed.map((fact) => fact.source),
                 ),
+                payloadJson: JSON.stringify({
+                  message: output,
+                  severity: built.risk.severity,
+                  risk: built.risk,
+                  journey: built.journey,
+                  factsUsed: built.factsUsed,
+                  forecast: built.forecast,
+                  modelId: connection.modelId,
+                }),
                 modelId: connection.modelId,
               },
             ],
@@ -312,7 +321,7 @@ export class RoeyService {
   }
 
   async conversations(userId: string) {
-    return this.prisma.roeyConversation.findMany({
+    const rows = await this.prisma.roeyConversation.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 20,
@@ -320,6 +329,21 @@ export class RoeyService {
         messages: { orderBy: { createdAt: "asc" }, take: 50 },
       },
     });
+    return rows.map((conversation) => ({
+      id: conversation.id,
+      titleHe: conversation.titleHe,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+      messages: conversation.messages.map((message) => ({
+        id: message.id,
+        role: message.role,
+        contentHe: message.contentHe,
+        severity: message.severity,
+        confidence: message.confidence,
+        createdAt: message.createdAt,
+        payload: safeJson(message.payloadJson),
+      })),
+    }));
   }
 
   async deleteConversation(userId: string, conversationId: string) {
@@ -433,3 +457,12 @@ export class RoeyService {
 }
 
 export type { GoogleModelOption };
+
+function safeJson(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}

@@ -3,6 +3,7 @@ import { DashboardService } from "../dashboard/dashboard.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RoeyForecastService } from "./roey-forecast.service";
 import { RoeyJourneyService } from "./roey-journey.service";
+import { MarketDataService } from "./market-data.service";
 import type { RoeyFact } from "./roey.types";
 
 export const DEFAULT_ROEY_PROFILE = {
@@ -21,13 +22,15 @@ export class RoeyContextService {
     private readonly dashboard: DashboardService,
     private readonly journeyService: RoeyJourneyService,
     private readonly forecastService: RoeyForecastService,
+    private readonly marketData: MarketDataService,
   ) {}
 
   async build(userId: string, month?: string) {
-    const [summary, journey, storedProfile] = await Promise.all([
+    const [summary, journey, storedProfile, market] = await Promise.all([
       this.dashboard.summary(userId, month),
       this.journeyService.forUser(userId),
       this.prisma.roeyProfile.findUnique({ where: { userId } }),
+      this.marketData.current().catch(() => null),
     ]);
     const profile = storedProfile ?? DEFAULT_ROEY_PROFILE;
     const signalsReliable =
@@ -42,8 +45,23 @@ export class RoeyContextService {
         summary.cashFlowForecast.expectedFixedExpenses,
       expectedFlexibleExpenses:
         summary.cashFlowForecast.expectedFlexibleBuffer,
+      debtPrincipal: summary.debtsSummary.principalTotal,
       completeness: summary.completeness,
       signalsReliable,
+      market: market
+        ? {
+            policyRatePct: market.policyRate?.percent ?? null,
+            annualCpiPct: market.cpi?.annualChangePct ?? null,
+            observedAt:
+              market.policyRate?.observedAt ??
+              market.cpi?.observedAt ??
+              market.fetchedAt,
+            sourceNames: [
+              ...(market.policyRate ? ["בנק ישראל"] : []),
+              ...(market.cpi ? ["הלשכה המרכזית לסטטיסטיקה"] : []),
+            ],
+          }
+        : undefined,
     });
     const risk = this.forecastService.risk(forecast);
     const factsUsed = this.facts(summary);
@@ -71,6 +89,7 @@ export class RoeyContextService {
         facts: factsUsed,
         risk,
         forecast,
+        market,
         attention: summary.attention.slice(0, 3).map((item) => ({
           conclusionHe: item.conclusionHe,
           meaningHe: item.meaningHe,

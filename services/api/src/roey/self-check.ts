@@ -35,6 +35,7 @@ const forecast = computeRoeyForecast({
   expectedIncome: 8_000,
   expectedFixedExpenses: 5_000,
   expectedFlexibleExpenses: 2_000,
+  debtPrincipal: 0,
   completeness: 90,
   signalsReliable: true,
 });
@@ -51,6 +52,7 @@ const risky = computeRoeyForecast({
   expectedIncome: 5_000,
   expectedFixedExpenses: 4_500,
   expectedFlexibleExpenses: 1_500,
+  debtPrincipal: 0,
   completeness: 80,
   signalsReliable: true,
 });
@@ -61,6 +63,7 @@ const lowConfidenceRisk = computeRoeyForecast({
   expectedIncome: 5_000,
   expectedFixedExpenses: 4_500,
   expectedFlexibleExpenses: 1_500,
+  debtPrincipal: 0,
   completeness: 20,
   signalsReliable: false,
 });

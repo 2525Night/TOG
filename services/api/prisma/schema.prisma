@@ -62,22 +62,24 @@ model User {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  accounts          FinancialAccount[]
-  transactions      Transaction[]
-  goals             Goal[]
-  auditEvents       AuditEvent[]
-  alerts            Alert[]
-  documents         Document[]
-  budgetCommitments BudgetCommitment[]
-  budgetSettings    UserBudgetSettings?
-  userCategories    UserCategory[]
-  loans             Loan[]
-  creditCards       CreditCard[]
-  installmentPlans  InstallmentPlan[]
-  roeyProfile       RoeyProfile?
-  roeyAiConnection  RoeyAiConnection?
-  roeyConversations RoeyConversation[]
-  roeyMessages      RoeyMessage[]
+  accounts            FinancialAccount[]
+  transactions        Transaction[]
+  goals               Goal[]
+  auditEvents         AuditEvent[]
+  alerts              Alert[]
+  documents           Document[]
+  budgetCommitments   BudgetCommitment[]
+  budgetSettings      UserBudgetSettings?
+  userCategories      UserCategory[]
+  loans               Loan[]
+  creditCards         CreditCard[]
+  installmentPlans    InstallmentPlan[]
+  roeyProfile         RoeyProfile?
+  roeyAiConnection    RoeyAiConnection?
+  roeyConversations   RoeyConversation[]
+  roeyMessages        RoeyMessage[]
+  roeyActionProposals RoeyActionProposal[]
+  roeyNudges          RoeyNudge[]
 }
 
 model FinancialAccount {
@@ -465,6 +467,7 @@ model RoeyMessage {
   severity       String?
   confidence     String?
   sourcesJson    String?
+  payloadJson    String?
   modelId        String?
   createdAt      DateTime @default(now())
 
@@ -473,4 +476,60 @@ model RoeyMessage {
 
   @@index([conversationId, createdAt])
   @@index([userId, createdAt])
+}
+
+model RoeyActionProposal {
+  id                    String    @id @default(cuid())
+  userId                String
+  conversationId        String?
+  type                  String
+  status                String    @default("PENDING")
+  payloadJson           String
+  previewJson           String
+  severity              String
+  requiresDoubleConfirm Boolean   @default(false)
+  expiresAt             DateTime
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+  executedAt            DateTime?
+  resultJson            String?
+  errorHe               String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+  @@index([conversationId])
+}
+
+model MarketDataSnapshot {
+  id          String     @id @default(cuid())
+  key         String     @unique
+  payloadJson String
+  observedAt  DateTime
+  fetchedAt   DateTime   @default(now())
+  sourceType  SourceType @default(MARKET_DATA)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model RoeyNudge {
+  id           String    @id @default(cuid())
+  userId       String
+  key          String
+  titleHe      String
+  bodyHe       String
+  severity     String
+  href         String?
+  status       String    @default("OPEN")
+  snoozedUntil DateTime?
+  sourceJson   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, status, updatedAt])
 }

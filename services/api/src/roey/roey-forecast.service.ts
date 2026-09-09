@@ -11,8 +11,15 @@ export type RoeyForecastInput = {
   expectedIncome: number;
   expectedFixedExpenses: number;
   expectedFlexibleExpenses: number;
+  debtPrincipal: number;
   completeness: number;
   signalsReliable: boolean;
+  market?: {
+    policyRatePct: number | null;
+    annualCpiPct: number | null;
+    observedAt: string | null;
+    sourceNames: string[];
+  };
 };
 
 @Injectable()
@@ -33,6 +40,10 @@ export function computeRoeyForecast(
   const expenses =
     positive(input.expectedFixedExpenses) +
     positive(input.expectedFlexibleExpenses);
+  const annualCpiPct = positive(input.market?.annualCpiPct ?? 0);
+  const monthlyInflationFactor = 1 + annualCpiPct / 100 / 12;
+  const monthlyRateShock =
+    positive(input.debtPrincipal) * (1 / 100) / 12;
   const confidence: RoeyConfidence =
     input.signalsReliable && input.completeness >= 70
       ? "HIGH"
@@ -53,14 +64,15 @@ export function computeRoeyForecast(
       "תרחיש בסיס",
       input.startingAvailable,
       income,
-      expenses,
+      expenses * monthlyInflationFactor,
     ),
     scenario(
       "STRESS",
       "תרחיש לחץ",
       input.startingAvailable,
       income * 0.9,
-      expenses * 1.1,
+      expenses * (1 + Math.max(0.1, annualCpiPct / 100)) +
+        monthlyRateShock,
     ),
   ];
 
@@ -72,8 +84,15 @@ export function computeRoeyForecast(
     assumptionsHe: [
       "התחזית מבוססת על הנתונים הקיימים ב-MoneyTail ולא על הבטחה לתוצאה.",
       "תרחיש הבסיס מניח שהכנסות והוצאות חודשיות יישארו דומות.",
-      "תרחיש הלחץ מניח ירידה של 10% בהכנסה ועלייה של 10% בהוצאות.",
+      "תרחיש הבסיס כולל קצב אינפלציה חודשי לפי מדד המחירים האחרון, אם המקור זמין.",
+      "תרחיש הלחץ מניח ירידה של 10% בהכנסה, לחץ מחירים ותוספת ריבית של נקודת אחוז אחת על יתרות חוב.",
     ],
+    marketContext: input.market ?? {
+      policyRatePct: null,
+      annualCpiPct: null,
+      observedAt: null,
+      sourceNames: [],
+    },
     scenarios,
   };
 }

@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, SourceType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BudgetService } from "../budget/budget.service";
 import { MonthFactsService } from "../month-facts/month-facts.service";
@@ -448,7 +448,15 @@ export class GoalsService {
     });
   }
 
-  async applySurplus(userId: string, id: string, dto: ApplySurplusDto) {
+  async applySurplus(
+    userId: string,
+    id: string,
+    dto: ApplySurplusDto,
+    options: {
+      sourceType?: SourceType;
+      auditAction?: string;
+    } = {},
+  ) {
     if (!dto.confirm) {
       throw new BadRequestException(
         "נדרש אישור מפורש (confirm: true) לפני הקצאת עודף ליעד",
@@ -498,7 +506,7 @@ export class GoalsService {
           description: `הקצאה ליעד: ${existing.title}`,
           merchantNorm: merchant,
           bookedAt,
-          sourceType: "USER_INPUT",
+          sourceType: options.sourceType ?? SourceType.USER_INPUT,
           userConfirmed: true,
         },
       }),
@@ -511,7 +519,7 @@ export class GoalsService {
       this.prisma.auditEvent.create({
         data: {
           userId,
-          action: "GOAL_SURPLUS_APPLIED",
+          action: options.auditAction ?? "GOAL_SURPLUS_APPLIED",
           meta: JSON.stringify({
             goalId: id,
             amount,
