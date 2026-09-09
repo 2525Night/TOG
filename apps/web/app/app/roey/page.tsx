@@ -424,6 +424,7 @@ function RoeyPageInner() {
                   </label>
                   <textarea
                     id="roey-message"
+                    name="message"
                     value={message}
                     rows={2}
                     maxLength={2_000}
@@ -470,6 +471,7 @@ function RoeyPageInner() {
                 <label className="field">
                   <span>Gemini API Key</span>
                   <input
+                    name="googleAiStudioApiKey"
                     type="password"
                     value={apiKey}
                     minLength={20}
@@ -482,6 +484,7 @@ function RoeyPageInner() {
                 </label>
                 <label className="roey-consent">
                   <input
+                    name="googleAiStudioConsent"
                     type="checkbox"
                     checked={consent}
                     onChange={(event) => setConsent(event.target.checked)}
@@ -508,6 +511,7 @@ function RoeyPageInner() {
                 <label className="field">
                   <span>מודל פעיל</span>
                   <select
+                    name="roeyModel"
                     value={connection.modelId || ""}
                     disabled={busy}
                     onChange={(event) => void selectModel(event.target.value)}
@@ -549,6 +553,7 @@ function RoeyPageInner() {
               <label className="field">
                 <span>מה היעד המרכזי שלך עכשיו?</span>
                 <input
+                  name="primaryGoal"
                   value={profile.primaryGoal || ""}
                   maxLength={240}
                   placeholder="למשל: לצאת מהמינוס ולבנות כרית ביטחון"
@@ -560,6 +565,7 @@ function RoeyPageInner() {
               <label className="field">
                 <span>סגנון תשובה</span>
                 <select
+                  name="tone"
                   value={profile.tone}
                   onChange={(event) =>
                     setProfile({
@@ -576,6 +582,7 @@ function RoeyPageInner() {
               <label className="field">
                 <span>רמת אסרטיביות</span>
                 <select
+                  name="assertiveness"
                   value={profile.assertiveness}
                   onChange={(event) =>
                     setProfile({
@@ -592,6 +599,7 @@ function RoeyPageInner() {
               <label className="field">
                 <span>פניות יזומות</span>
                 <select
+                  name="notificationMode"
                   value={profile.notificationMode}
                   onChange={(event) =>
                     setProfile({
@@ -608,6 +616,7 @@ function RoeyPageInner() {
               </label>
               <label className="roey-consent">
                 <input
+                  name="memoryEnabled"
                   type="checkbox"
                   checked={profile.memoryEnabled}
                   onChange={(event) =>
