@@ -31,7 +31,7 @@ assert.equal(established.stage, "ESTABLISHED");
 assert.equal(established.reliableMonths, 2);
 
 const forecast = computeRoeyForecast({
-  startingAvailable: 1_000,
+  startingAvailable: 5_000,
   expectedIncome: 8_000,
   expectedFixedExpenses: 5_000,
   expectedFlexibleExpenses: 2_000,
@@ -42,7 +42,7 @@ assert.equal(forecast.confidence, "HIGH");
 assert.equal(
   forecast.scenarios.find((item) => item.id === "BASE")?.points[2]
     .projectedAvailable,
-  4_000,
+  8_000,
 );
 assert.equal(classifyRoeyRisk(forecast).severity, "INFO");
 
