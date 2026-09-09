@@ -83,12 +83,23 @@ export class AuthService implements OnModuleInit {
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
+      where: { email: dto.email.trim().toLowerCase() },
     });
     if (!user) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
-    const ok = await bcrypt.compare(dto.password ?? "", user.passwordHash);
+    const password = dto.password ?? "";
+    const normalizedPassword = password
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+      .trim();
+    const candidates = [...new Set([password, normalizedPassword])];
+    const ok = (
+      await Promise.all(
+        candidates.map((candidate) =>
+          bcrypt.compare(candidate, user.passwordHash),
+        ),
+      )
+    ).some(Boolean);
     if (!ok) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }

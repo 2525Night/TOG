@@ -55,7 +55,7 @@ export default function LoginPage() {
         user: { onboardingCompleted?: boolean };
       }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
       setToken(res.accessToken);
       setGateHref(
