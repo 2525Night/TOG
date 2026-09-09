@@ -115,7 +115,8 @@ type SavedSession = {
   titleHe: string | null;
   createdAt: string;
   updatedAt: string;
-  messages: Array<{
+  messageCount: number;
+  messages?: Array<{
     id: string;
     role: "USER" | "ASSISTANT";
     contentHe: string;
@@ -375,10 +376,16 @@ function RoeyPageInner() {
     setSuccess("נפתח סשן חדש. הסשן הקודם נשמר ברשימה.");
   }
 
-  function openSession(session: SavedSession) {
-    setConversationId(session.id);
-    setMessages(
-      session.messages.map((saved) =>
+  async function openSession(session: SavedSession) {
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await api<SavedSession>(
+        `/roey/conversations/${session.id}`,
+      );
+      setConversationId(session.id);
+      setMessages(
+        (detail.messages || []).map((saved) =>
         saved.role === "USER"
           ? {
               id: saved.id,
@@ -393,10 +400,14 @@ function RoeyPageInner() {
                 ? { ...saved.payload, conversationId: session.id }
                 : undefined,
             },
-      ),
-    );
-    setSessionsOpen(false);
-    setError(null);
+        ),
+      );
+      setSessionsOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "טעינת הסשן נכשלה");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteSession() {
@@ -580,7 +591,8 @@ function RoeyPageInner() {
                         >
                           <button
                             type="button"
-                            onClick={() => openSession(session)}
+                            disabled={busy}
+                            onClick={() => void openSession(session)}
                           >
                             <strong>{session.titleHe || "שיחה עם Roey"}</strong>
                             <small>
@@ -588,6 +600,8 @@ function RoeyPageInner() {
                                 "he-IL",
                                 { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
                               )}
+                              {" · "}
+                              {session.messageCount} הודעות
                             </small>
                           </button>
                           <button
@@ -978,6 +992,12 @@ function ForecastPanel({ forecast, risk }: { forecast: Forecast; risk: Risk }) {
             </div>
             <small>
               מקור: {forecast.marketContext.sourceNames.join(", ")}
+              {forecast.marketContext.observedAt
+                ? ` · עדכון ${new Date(forecast.marketContext.observedAt).toLocaleDateString("he-IL")}`
+                : ""}
+            </small>
+            <small>
+              הריבית מוצגת כהקשר. תרחיש הלחץ משתמש בעלייה היפותטית של נקודת אחוז אחת.
             </small>
           </div>
         )}

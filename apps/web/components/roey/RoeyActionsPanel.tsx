@@ -126,12 +126,33 @@ export function RoeyActionsPanel({
   }, [load]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  useEffect(() => {
     setCategoryKey(
       direction === "INCOME"
         ? INCOME_CATEGORIES[0].key
         : EXPENSE_CATEGORIES[0].key,
     );
   }, [direction]);
+
+  useEffect(() => {
+    if (type === "ADD_TRANSACTION") return;
+    if (type === "CHANGE_TRANSACTION_CATEGORY") {
+      const selected = transactions.find(
+        (transaction) => transaction.id === transactionId,
+      );
+      setCategoryKey(
+        selected?.direction === "INCOME"
+          ? INCOME_CATEGORIES[0].key
+          : EXPENSE_CATEGORIES[0].key,
+      );
+      return;
+    }
+    setCategoryKey(EXPENSE_CATEGORIES[0].key);
+  }, [type, transactionId, transactions]);
 
   async function propose(event: FormEvent) {
     event.preventDefault();
@@ -315,7 +336,13 @@ export function RoeyActionsPanel({
               <CategoryField
                 value={categoryKey}
                 onChange={setCategoryKey}
-                categories={EXPENSE_CATEGORIES}
+                categories={
+                  transactions.find(
+                    (transaction) => transaction.id === transactionId,
+                  )?.direction === "INCOME"
+                    ? INCOME_CATEGORIES
+                    : EXPENSE_CATEGORIES
+                }
               />
               <label className="field">
                 <span>תדירות</span>
@@ -439,6 +466,11 @@ export function RoeyActionsPanel({
               </span>
             </div>
             <strong>{action.preview.summaryHe}</strong>
+            <small className="roey-action-expiry">
+              {action.status === "PENDING"
+                ? `בתוקף עד ${new Date(action.expiresAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`
+                : statusHe(action.status)}
+            </small>
             <p>{action.preview.effectHe}</p>
             {action.preview.availableBefore != null &&
               action.preview.availableAfter != null && (
@@ -489,6 +521,7 @@ export function RoeyActionsPanel({
                     type="button"
                     disabled={
                       busy != null ||
+                      new Date(action.expiresAt).getTime() <= Date.now() ||
                       (action.requiresDoubleConfirm &&
                         confirmationPhrases[action.id]?.trim() !==
                           "אני מאשר את ההשפעה")

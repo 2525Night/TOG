@@ -7103,6 +7103,10 @@ button.linkish:disabled {
   font-weight: 700;
 }
 
+.roey-action-expiry {
+  color: var(--mt-mute);
+}
+
 .roey-severity {
   flex: 0 0 auto;
   padding: 0.32rem 0.55rem;
