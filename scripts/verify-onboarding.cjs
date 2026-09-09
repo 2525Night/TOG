@@ -72,7 +72,6 @@ function get(url) {
     "/auth/onboarding/complete",
     {
       accountName: "עו״ש ראשי",
-      startingBalance: 3000,
       monthlyIncomeNet: 12000,
       fixedExpenses: [
         { label: "שכירות", categoryKey: "housing", amount: 4500 },

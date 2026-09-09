@@ -139,20 +139,19 @@ export class AuthService implements OnModuleInit {
       return { ok: true, alreadyCompleted: true };
     }
 
+    const incomeNet = dto.monthlyIncomeNet > 0 ? dto.monthlyIncomeNet : 0;
     const account = await this.prisma.financialAccount.create({
       data: {
         userId,
         name: dto.accountName,
         kind: "BANK",
-        currentBalance: new Prisma.Decimal(dto.startingBalance),
+        currentBalance: new Prisma.Decimal(incomeNet),
         sourceType: "USER_INPUT",
         userConfirmed: true,
       },
     });
 
-    // Optional estimated income as a cashflow row for this month.
-    // Balance stays at startingBalance (יתרה נוכחית בעו״ש) — do not double-count.
-    if (dto.monthlyIncomeNet > 0) {
+    if (incomeNet > 0) {
       const bookedAt = new Date();
       bookedAt.setDate(1);
       await this.prisma.transaction.create({
@@ -160,7 +159,7 @@ export class AuthService implements OnModuleInit {
           userId,
           accountId: account.id,
           direction: "INCOME",
-          amount: new Prisma.Decimal(dto.monthlyIncomeNet),
+          amount: new Prisma.Decimal(incomeNet),
           categoryKey: "salary",
           description: "הכנסה חודשית נטו (הקמה)",
           bookedAt,

@@ -50,7 +50,6 @@ async function main() {
     token,
     body: {
       accountName: "עוש ראשי",
-      startingBalance: 5000,
       monthlyIncomeNet: 12000,
       fixedExpenses: [
         { label: "שכירות", categoryKey: "housing", amount: 3500 },

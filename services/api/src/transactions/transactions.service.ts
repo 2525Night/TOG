@@ -10,6 +10,7 @@ import {
   TxDirection,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { cashSignedDelta } from "../accounts/checking-balance";
 import { MonthFactsService } from "../month-facts/month-facts.service";
 import {
   CreateTransactionDto,
@@ -23,17 +24,7 @@ type TransactionWriteOptions = {
   proposalId?: string;
 };
 
-function balanceSignedDelta(
-  direction: TxDirection,
-  amount: number,
-  economicRole: EconomicRole | string,
-): number {
-  // Card purchases do not move bank cash until settlement.
-  if (economicRole === "CARD_PURCHASE") return 0;
-  if (direction === "INCOME") return amount;
-  if (direction === "EXPENSE") return -amount;
-  return 0;
-}
+const balanceSignedDelta = cashSignedDelta;
 
 @Injectable()
 export class TransactionsService {

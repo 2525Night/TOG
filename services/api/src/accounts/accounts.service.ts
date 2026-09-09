@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MonthFactsService } from "../month-facts/month-facts.service";
 import { CreateAccountDto, UpdateAccountDto } from "./accounts.dto";
+import { cashBalanceFromTransactions } from "./checking-balance";
 
 @Injectable()
 export class AccountsService {
@@ -67,14 +68,55 @@ export class AccountsService {
         name: dto.name,
         kind: dto.kind,
         isActive: dto.isActive,
-        currentBalance:
-          dto.currentBalance === undefined
-            ? undefined
-            : new Prisma.Decimal(dto.currentBalance),
+        // Checking is derived from transactions, not a separately typed snapshot.
       },
     });
     this.monthFacts.invalidateUser(userId);
     return account;
+  }
+
+  async recomputeCheckingFromTransactions(userId?: string) {
+    const accounts = await this.prisma.financialAccount.findMany({
+      where: {
+        kind: "BANK",
+        isActive: true,
+        ...(userId ? { userId } : {}),
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    const byUser = new Map<string, typeof accounts>();
+    for (const account of accounts) {
+      const list = byUser.get(account.userId) ?? [];
+      list.push(account);
+      byUser.set(account.userId, list);
+    }
+
+    let updated = 0;
+    for (const [ownerId, userAccounts] of byUser) {
+      const primary = userAccounts[0];
+      const txs = await this.prisma.transaction.findMany({
+        where: { userId: ownerId },
+        select: { direction: true, amount: true, economicRole: true },
+      });
+      const next = cashBalanceFromTransactions(txs);
+      if (Number(primary.currentBalance) !== next) {
+        await this.prisma.financialAccount.update({
+          where: { id: primary.id },
+          data: { currentBalance: new Prisma.Decimal(next) },
+        });
+        updated += 1;
+      }
+      for (const extra of userAccounts.slice(1)) {
+        if (Number(extra.currentBalance) === 0) continue;
+        await this.prisma.financialAccount.update({
+          where: { id: extra.id },
+          data: { currentBalance: new Prisma.Decimal(0) },
+        });
+        updated += 1;
+      }
+      this.monthFacts.invalidateUser(ownerId);
+    }
+    return { accounts: accounts.length, updated };
   }
 
   private async ensureOwned(userId: string, id: string) {
