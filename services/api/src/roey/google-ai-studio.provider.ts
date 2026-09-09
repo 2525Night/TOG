@@ -172,17 +172,42 @@ export class GoogleAiStudioProvider {
       }
     }
     if (!value || typeof value !== "object") {
+      if (
+        unfenced.length >= 2 &&
+        unfenced.length <= 4_000 &&
+        !/\d/.test(unfenced)
+      ) {
+        return {
+          messageHe: unfenced,
+          recommendationHe: null,
+          alternativesHe: [],
+          questionHe: null,
+          confidence: "LOW",
+        };
+      }
       return null;
     }
-    const output = value as Partial<RoeyAgentOutput>;
-    if (
-      typeof output.messageHe !== "string" ||
-      !["LOW", "MEDIUM", "HIGH"].includes(output.confidence || "")
-    ) {
+    const output = value as Partial<RoeyAgentOutput> & {
+      message?: unknown;
+      answer?: unknown;
+      text?: unknown;
+    };
+    const messageHe = [
+      output.messageHe,
+      output.message,
+      output.answer,
+      output.text,
+    ].find((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (!messageHe) {
       return null;
     }
+    const confidence = ["LOW", "MEDIUM", "HIGH"].includes(
+      output.confidence || "",
+    )
+      ? (output.confidence as RoeyAgentOutput["confidence"])
+      : "MEDIUM";
     return {
-      messageHe: output.messageHe.slice(0, 4_000),
+      messageHe: messageHe.slice(0, 4_000),
       recommendationHe:
         typeof output.recommendationHe === "string"
           ? output.recommendationHe.slice(0, 1_000)
@@ -197,7 +222,7 @@ export class GoogleAiStudioProvider {
         typeof output.questionHe === "string"
           ? output.questionHe.slice(0, 800)
           : null,
-      confidence: output.confidence as RoeyAgentOutput["confidence"],
+      confidence,
     };
   }
 
