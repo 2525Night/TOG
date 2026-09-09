@@ -137,8 +137,10 @@ a,
 
 .is-native-app .mobile-topbar {
   padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
+  padding-bottom: 0.45rem;
   padding-inline: calc(0.85rem + env(safe-area-inset-right, 0px))
     calc(0.85rem + env(safe-area-inset-left, 0px));
+  min-height: calc(3.25rem + env(safe-area-inset-top, 0px));
 }
 
 .is-native-app .container {
@@ -617,9 +619,10 @@ a,
   display: none;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.45rem 0.85rem;
   min-height: 3.25rem;
-  background: rgba(21, 32, 43, 0.92);
+  background: rgba(21, 32, 43, 0.94);
   border-bottom: 1px solid rgba(255, 255, 255, 0.16);
   position: sticky;
   top: 0;
@@ -637,7 +640,8 @@ a,
 }
 
 .mobile-topbar .brand-lockup {
-  transform: scale(0.92);
+  align-items: center;
+  transform: scale(0.9);
   transform-origin: inline-start center;
 }
 
@@ -651,7 +655,8 @@ a,
 }
 
 .mobile-topbar .brand-lockup .five {
-  color: #9fd0c2;
+  color: #b7e4d8;
+  font-size: 0.8rem;
 }
 
 .mobile-topbar .brand-lockup--on-light .m,
@@ -662,7 +667,7 @@ a,
   -webkit-text-stroke-color: #9fd0c2;
 }
 .mobile-topbar .brand-lockup--on-light .five {
-  color: #9fd0c2;
+  color: #b7e4d8;
 }
 
 .icon-btn {
