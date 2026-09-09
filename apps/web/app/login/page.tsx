@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { api, setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +24,8 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       setToken(res.accessToken);
-      router.push(
+      // Full navigation avoids stale auth/onboarding state in the app shell.
+      window.location.assign(
         res.user?.onboardingCompleted === false ? "/app/onboarding" : "/app",
       );
     } catch (err) {

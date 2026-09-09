@@ -65,7 +65,7 @@ function usePersistMonthToUrl() {
     if (!stored) return;
     const params = new URLSearchParams(search.toString());
     params.set("month", stored);
-    router.replace(`${pathname}?${params.toString()}`);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, search]);
 }
 
@@ -78,7 +78,7 @@ function setMonthOnRoute(
   writeStoredMonth(next);
   const params = new URLSearchParams(search.toString());
   params.set("month", next);
-  router.replace(`${pathname}?${params.toString()}`);
+  router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 }
 
 export function monthOptionsAround(past = 12, future = 12): string[] {

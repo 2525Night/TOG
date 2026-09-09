@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+apps/web
+apps/admin
+apps/mobile
+services/api/prisma/*.db
+services/api/prisma/*.db-journal
+.data
+uploads
+tmp
+*.md
+Designs_Ideas
+SystemDoc

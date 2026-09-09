@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { api, setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +22,7 @@ export default function RegisterPage() {
         body: JSON.stringify({ email, password, displayName }),
       });
       setToken(res.accessToken);
-      router.push("/app/onboarding");
+      window.location.assign("/app/onboarding");
     } catch (err) {
       setError(
         err instanceof Error

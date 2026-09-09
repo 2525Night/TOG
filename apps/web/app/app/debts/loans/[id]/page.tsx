@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { api, formatIls } from "@/lib/api";
 import { PeriodBar, useSelectedMonth, appHref } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
@@ -46,6 +46,7 @@ function formatDate(iso: string | null) {
 
 function LoanDetailInner() {
   const params = useParams();
+  const router = useRouter();
   const id = String(params.id || "");
   const month = useSelectedMonth();
   const [loan, setLoan] = useState<LoanDetail | null>(null);
@@ -112,7 +113,7 @@ function LoanDetailInner() {
     if (!loan) return;
     setRemoveConfirm(false);
     await api(`/loans/${loan.id}`, { method: "DELETE" });
-    window.location.href = appHref("/app/debts/loans", month);
+    router.push(appHref("/app/debts/loans", month));
   }
 
   if (!loan && !error) return <p className="muted">טוען…</p>;

@@ -1,0 +1,407 @@
+/* Layered Clarity — Android phone adaptation tokens (same system, denser shell) */
+:root {
+  --mt-ink: #1a2330;
+  --mt-slate: #2a3441;
+  --mt-mute: #5d6b7a;
+  --mt-mint: #7db8a8;
+  --mt-mint-deep: #3d7f72;
+  --mt-sky: #8aa4c4;
+  --mt-amber: #c47d3a;
+  --mt-good: #2f7a52;
+  --mt-danger: #b24a3d;
+  --mt-white: #ffffff;
+  --mt-bg: #15202b;
+  --mt-glass: rgba(255, 255, 255, 0.64);
+  --mt-glass-strong: rgba(255, 255, 255, 0.86);
+  --mt-line: rgba(42, 52, 65, 0.12);
+  --mt-radius: 14px;
+  --mt-radius-sm: 8px;
+  --touch: 44px;
+  --safe-top: 28px;
+  --safe-bottom: 18px;
+  --font: "Heebo", "Assistant", "Segoe UI", Tahoma, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: #0e151c;
+  color: #f3f7fa;
+  font-family: var(--font);
+}
+
+body {
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 700;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 52ch;
+  color: rgba(243, 247, 250, 0.72);
+  line-height: 1.55;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pill {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f3f7fa;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pill[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--mt-mint-deep) 75%, #fff);
+  border-color: transparent;
+  color: #fff;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .stage { grid-template-columns: 1fr; justify-items: center; }
+}
+
+.phone {
+  width: min(360px, 100%);
+  border-radius: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background: #0a1016;
+  padding: 10px;
+  position: relative;
+}
+
+.phone-screen {
+  border-radius: 28px;
+  overflow: hidden;
+  background: var(--mt-bg);
+  min-height: 640px;
+  position: relative;
+  background-image:
+    linear-gradient(155deg, rgba(21, 32, 43, 0.55), rgba(21, 32, 43, 0.78)),
+    radial-gradient(circle at 80% 10%, rgba(125, 184, 168, 0.22), transparent 45%),
+    radial-gradient(circle at 10% 90%, rgba(138, 164, 196, 0.18), transparent 40%);
+}
+
+.phone-screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+
+.status {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: var(--safe-top);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  font-size: 0.7rem;
+  color: rgba(243, 247, 250, 0.85);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.notes {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.note {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--mt-radius);
+  padding: 1rem 1.1rem;
+}
+
+.note h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: var(--mt-mint);
+}
+
+.note p {
+  margin: 0;
+  color: rgba(243, 247, 250, 0.75);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.rule {
+  padding: 0.9rem 1rem;
+  border-radius: var(--mt-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rule strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #fff;
+}
+
+.rule span {
+  color: rgba(243, 247, 250, 0.68);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.live {
+  margin-top: 0.5rem;
+}
+
+.live-phone {
+  width: min(360px, 100%);
+  margin: 0 auto;
+  border-radius: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  padding: 10px;
+  background: #0a1016;
+}
+
+.live-screen {
+  border-radius: 28px;
+  overflow: hidden;
+  min-height: 680px;
+  background:
+    linear-gradient(155deg, rgba(21, 32, 43, 0.5), rgba(21, 32, 43, 0.72)),
+    radial-gradient(circle at 75% 0%, rgba(125, 184, 168, 0.25), transparent 40%),
+    var(--mt-bg);
+  color: #f3f7fa;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-bottom);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(var(--safe-top) + 0.35rem) 0.9rem 0.55rem;
+}
+
+.brand {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.brand .tail { color: var(--mt-mint); }
+
+.menu-btn {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+}
+
+.period {
+  margin: 0 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--mt-radius);
+  background: var(--mt-glass);
+  color: var(--mt-ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.period button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--mt-line);
+  background: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+.content {
+  padding: 0.85rem 0.75rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.glass {
+  background: var(--mt-glass);
+  color: var(--mt-ink);
+  border-radius: var(--mt-radius);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  padding: 0.95rem 1rem;
+}
+
+.kicker {
+  font-size: 0.75rem;
+  color: var(--mt-mute);
+  margin-bottom: 0.25rem;
+}
+
+.answer {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0 0 0.35rem;
+}
+
+.meaning {
+  margin: 0 0 0.85rem;
+  color: var(--mt-mute);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.cta {
+  min-height: var(--touch);
+  border: 0;
+  border-radius: 12px;
+  padding: 0 1rem;
+  background: var(--mt-mint-deep);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+
+.chips {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
+
+.chip {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 52, 65, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--mt-ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.chip.active {
+  background: var(--mt-mint-deep);
+  color: #fff;
+  border-color: transparent;
+}
+
+.tx {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(42, 52, 65, 0.1);
+  min-height: var(--touch);
+  align-content: center;
+}
+
+.tx:last-child { border-bottom: 0; }
+.tx .meta { color: var(--mt-mute); font-size: 0.78rem; }
+.tx .out { color: var(--mt-danger); font-weight: 700; }
+.tx .in { color: var(--mt-good); font-weight: 700; }
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 20, 28, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 78%;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(16px);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.2);
+  padding: calc(var(--safe-top) + 0.75rem) 1rem var(--safe-bottom);
+  transform: translateX(105%);
+  transition: transform 0.2s ease;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+html[dir="rtl"] .drawer { transform: translateX(-105%); }
+
+.live-screen.open .drawer-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.live-screen.open .drawer {
+  transform: translateX(0);
+}
+
+.nav-item {
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.65rem;
+  border-radius: 12px;
+  color: #f3f7fa;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.nav-item.active {
+  background: rgba(125, 184, 168, 0.28);
+}
+
+.caption {
+  color: rgba(243, 247, 250, 0.55);
+  font-size: 0.85rem;
+  text-align: center;
+}

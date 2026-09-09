@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Heebo, Rubik } from "next/font/google";
+import { MobileNativeShell } from "@/components/MobileNativeShell";
 import "./globals.css";
 
 const heebo = Heebo({
@@ -21,6 +22,22 @@ export const metadata: Metadata = {
     icon: [{ url: "/app-icon.png", type: "image/png" }],
     apple: [{ url: "/app-icon.png" }],
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "MoneyTail",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#15202b",
 };
 
 export default function RootLayout({
@@ -28,7 +45,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="he" dir="rtl" className={`${heebo.variable} ${rubik.variable}`}>
-      <body>{children}</body>
+      <body>
+        <MobileNativeShell />
+        {children}
+      </body>
     </html>
   );
 }

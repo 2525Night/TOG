@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type Point = {
   label: string;
   income: number;
@@ -92,9 +94,13 @@ export function CategoryBars({
         );
         if (href) {
           return (
-            <a className="cat-row cat-row-link" key={item.key || item.labelHe} href={href}>
+            <Link
+              className="cat-row cat-row-link"
+              key={item.key || item.labelHe}
+              href={href}
+            >
               {inner}
-            </a>
+            </Link>
           );
         }
         return (

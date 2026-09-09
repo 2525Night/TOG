@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   EXPENSE_CATEGORIES,
   mergeCategoryOptions,
@@ -98,6 +98,7 @@ function shortMonthHe(ym: string) {
 function CardDetailInner() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const id = String(params.id || "");
   const month = useSelectedMonth();
   const [card, setCard] = useState<CardDetail | null>(null);
@@ -303,7 +304,7 @@ function CardDetailInner() {
     if (!card) return;
     setPendingConfirm(null);
     await api(`/credit-cards/${card.id}`, { method: "DELETE" });
-    window.location.href = appHref("/app/debts/cards", month);
+    router.push(appHref("/app/debts/cards", month));
   }
 
   async function onDeletePlan(plan: Plan) {

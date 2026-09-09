@@ -8,6 +8,8 @@
     "start": "next start -p 3005"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/status-bar": "^7.0.6",
     "@moneytail/shared": "*",
     "next": "^15.5.2",
     "react": "^19.1.1",

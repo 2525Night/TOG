@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MoneyTail · Android Phone · Design Idea</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/system.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>Layered Clarity · אדפטציה לטלפון אנדרואיד</h1>
+        <p>
+          אותו קונספט — mood כהה, זכוכית, mint, RTL עברי — מותאם לצפיפות,
+          מגע, safe areas וניווט Back. לא מערכת עיצוב חדשה.
+        </p>
+      </header>
+
+      <div class="pills" role="tablist" aria-label="מסכי מוקאפ">
+        <button class="pill" type="button" data-shot="home" aria-pressed="true">
+          תמונת מצב
+        </button>
+        <button class="pill" type="button" data-shot="money" aria-pressed="false">
+          תנועות
+        </button>
+        <button class="pill" type="button" data-shot="shell" aria-pressed="false">
+          תפריט / Shell
+        </button>
+        <button class="pill" type="button" data-shot="live" aria-pressed="false">
+          דמו חי
+        </button>
+      </div>
+
+      <section class="stage" id="mock-stage">
+        <div class="phone" aria-label="מסגרת טלפון">
+          <div class="phone-screen">
+            <div class="status"><span>12:05</span><span>●●●</span></div>
+            <img id="shot" src="./img/home.png" alt="מוקאפ תמונת מצב בטלפון" />
+          </div>
+        </div>
+        <div class="notes" id="notes-home">
+          <article class="note">
+            <h3>Viewport אחד = משימה אחת</h3>
+            <p>
+              תשובת Clarity בראש, משפט משמעות, CTA אחד. בלי סטטיסטיקות
+              מתחרות ב-above the fold.
+            </p>
+          </article>
+          <article class="note">
+            <h3>PeriodBar דביק</h3>
+            <p>
+              בחירת חודש נשארת בהישג יד בזמן גלילה — בלי לאבד את שורת הבהירות.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Safe areas</h3>
+            <p>
+              ריווח לסטטוס־בר ול־gesture bar. סטטוס־בר כהה תואם mood.
+            </p>
+          </article>
+        </div>
+        <div class="notes" id="notes-money" hidden>
+          <article class="note">
+            <h3>Chips אופקיים</h3>
+            <p>
+              סינון כיוון בגלילה אופקית — יעד מגע גדול, בלי לקפוץ לראש הדף.
+            </p>
+          </article>
+          <article class="note">
+            <h3>שורות 44dp</h3>
+            <p>
+              רשימת תנועות צפופה אבל ניתנת ללחיצה באגודל; סכומים בצבע סמנטי.
+            </p>
+          </article>
+          <article class="note">
+            <h3>בלי Bottom Nav</h3>
+            <p>
+              ניווט נשאר ב־drawer RTL — שומר על מודל האפליקציה הקיים.
+            </p>
+          </article>
+        </div>
+        <div class="notes" id="notes-shell" hidden>
+          <article class="note">
+            <h3>Drawer מימין</h3>
+            <p>
+              אותו סיידבר של Layered Clarity, כשכבת זכוכית מעל backdrop.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Back היררכי</h3>
+            <p>
+              סוגר תפריט/מודאל → מסך קודם → ממזער. לא הורג את האפליקציה.
+            </p>
+          </article>
+          <article class="note">
+            <h3>מיתוג בטופ</h3>
+            <p>
+              MoneyTail נשאר אות גיבור בכרום — לא אייקון קטן בלבד.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="live" id="live-stage" hidden>
+        <p class="caption">דמו אינטראקטיבי · אותם טוקנים · לחצו תפריט / Back בדפדפן</p>
+        <div class="live-phone">
+          <div class="live-screen" id="live" dir="rtl">
+            <div class="topbar">
+              <div class="brand">Money<span class="tail">Tail</span></div>
+              <button class="menu-btn" type="button" id="open-menu" aria-label="תפריט">
+                תפריט
+              </button>
+            </div>
+            <div class="period">
+              <button type="button" aria-label="חודש קודם">‹</button>
+              <strong>ספטמבר 2026</strong>
+              <button type="button" aria-label="חודש הבא">›</button>
+            </div>
+            <div class="content" id="live-content">
+              <!-- filled by JS -->
+            </div>
+            <div class="drawer-backdrop" id="backdrop"></div>
+            <nav class="drawer" aria-label="תפריט ראשי">
+              <div class="brand" style="margin-bottom: 0.75rem">
+                Money<span class="tail">Tail</span>
+              </div>
+              <button class="nav-item active" type="button" data-view="home">◎ תמונת מצב</button>
+              <button class="nav-item" type="button" data-view="money">⇄ תנועות</button>
+              <button class="nav-item" type="button" data-view="reports">▣ מאזן</button>
+              <button class="nav-item" type="button" data-view="debts">◇ אשראי והלוואות</button>
+              <button class="nav-item" type="button" data-view="goals">○ יעדים</button>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 style="margin: 0 0 0.75rem; font-size: 1.15rem">כללי אדפטציה (לא שינוי קונספט)</h2>
+        <div class="rules">
+          <div class="rule">
+            <strong>שומרים</strong>
+            <span>Mood · Glass · Mint/Sky/Amber · Clarity stack · RTL</span>
+          </div>
+          <div class="rule">
+            <strong>מדדפים</strong>
+            <span>צפיפות · 44dp · safe area · sticky period · back hierarchy</span>
+          </div>
+          <div class="rule">
+            <strong>לא מוסיפים</strong>
+            <span>Bottom tabs · Material cards · purple glow · hero clutter</span>
+          </div>
+        </div>
+      </section>
+
+      <p class="caption">
+        HLD:
+        <a href="../HLD-android-phone-adaptation.md" style="color: var(--mt-mint)"
+          >HLD-android-phone-adaptation.md</a
+        >
+      </p>
+    </div>
+
+    <script>
+      const shot = document.getElementById("shot");
+      const mockStage = document.getElementById("mock-stage");
+      const liveStage = document.getElementById("live-stage");
+      const notes = {
+        home: document.getElementById("notes-home"),
+        money: document.getElementById("notes-money"),
+        shell: document.getElementById("notes-shell"),
+      };
+
+      document.querySelectorAll(".pill").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".pill").forEach((b) =>
+            b.setAttribute("aria-pressed", "false"),
+          );
+          btn.setAttribute("aria-pressed", "true");
+          const key = btn.dataset.shot;
+          if (key === "live") {
+            mockStage.hidden = true;
+            liveStage.hidden = false;
+            return;
+          }
+          mockStage.hidden = false;
+          liveStage.hidden = true;
+          shot.src = `./img/${key}.png`;
+          shot.alt =
+            key === "home"
+              ? "מוקאפ תמונת מצב בטלפון"
+              : key === "money"
+                ? "מוקאפ תנועות בטלפון"
+                : "מוקאפ תפריט בטלפון";
+          Object.entries(notes).forEach(([k, el]) => {
+            el.hidden = k !== key;
+          });
+        });
+      });
+
+      const live = document.getElementById("live");
+      const liveContent = document.getElementById("live-content");
+      const views = {
+        home: `
+          <div class="glass">
+            <div class="kicker">תשובה ברורה</div>
+            <p class="answer">החודש נשארת יתרה חיובית אחרי ההוצאות הקבועות</p>
+            <p class="meaning">אפשר להקצות עוד קצת ליעד החירום בלי ללחוץ על התזרים.</p>
+            <button class="cta" type="button">הקצאה ליעד</button>
+          </div>
+          <div class="glass">
+            <div class="kicker">דופק</div>
+            <p class="meaning" style="margin:0">הוצאות משתנות נמוכות מהממוצע · 3 פריטים ממתינים במעקב</p>
+          </div>
+        `,
+        money: `
+          <div class="chips" role="group" aria-label="סינון">
+            <button class="chip active" type="button">הכל 24</button>
+            <button class="chip" type="button">הכנסה 6</button>
+            <button class="chip" type="button">הוצאה 18</button>
+          </div>
+          <div class="glass" style="padding-top:0.35rem;padding-bottom:0.35rem">
+            <div class="tx"><div><strong>סופרמרקט</strong><div class="meta">מזון · 8 בספט׳</div></div><div class="out">-₪214</div></div>
+            <div class="tx"><div><strong>משכורת</strong><div class="meta">הכנסה · 1 בספט׳</div></div><div class="in">+₪18,400</div></div>
+            <div class="tx"><div><strong>דלק</strong><div class="meta">תחבורה · 6 בספט׳</div></div><div class="out">-₪280</div></div>
+            <div class="tx"><div><strong>ארנונה</strong><div class="meta">דיור · 5 בספט׳</div></div><div class="out">-₪620</div></div>
+          </div>
+        `,
+        reports: `<div class="glass"><div class="kicker">מאזן</div><p class="answer">הכנסות מול הוצאות החודש</p><p class="meaning">פירוט קטגוריות ומגמה — אותו Clarity, צפיפות טלפון.</p></div>`,
+        debts: `<div class="glass"><div class="kicker">אשראי והלוואות</div><p class="answer">יתרת אשראי ופריסות במקום אחד</p><p class="meaning">כרטיסים והלוואות בזכוכית, לא כרטיסי Material.</p></div>`,
+        goals: `<div class="glass"><div class="kicker">יעדים</div><p class="answer">הקצאה חודשית ליעדים פתוחים</p><p class="meaning">CTA אחד ברור — בלי רעש ויזואלי.</p></div>`,
+      };
+
+      function showView(name) {
+        liveContent.innerHTML = views[name] || views.home;
+        document.querySelectorAll(".nav-item").forEach((el) => {
+          el.classList.toggle("active", el.dataset.view === name);
+        });
+        live.classList.remove("open");
+      }
+
+      showView("home");
+      document.getElementById("open-menu").onclick = () => live.classList.add("open");
+      document.getElementById("backdrop").onclick = () => live.classList.remove("open");
+      document.querySelectorAll(".nav-item").forEach((el) => {
+        el.addEventListener("click", () => showView(el.dataset.view));
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && live.classList.contains("open")) {
+          live.classList.remove("open");
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { BrandLockup } from "@/components/BrandLockup";
-import { api, getToken } from "@/lib/api";
+import { api, getToken, setToken, invalidateApiCache } from "@/lib/api";
 
 type Me = {
   id: string;
@@ -21,11 +21,26 @@ export default function AppLayout({
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  const [gateError, setGateError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const isOnboarding = pathname.startsWith("/app/onboarding");
   const authedRef = useRef(false);
 
-  // Auth once — do not re-gate on every route change (breaks nav when API is slow/down).
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  async function loadMe() {
+    invalidateApiCache("/auth/me");
+    const user = await api<Me>("/auth/me");
+    authedRef.current = true;
+    setMe(user);
+    setGateError(null);
+    setReady(true);
+    return user;
+  }
+
+  // Auth gate — only send to login on missing/invalid token (401), not on network blips.
   useEffect(() => {
     let cancelled = false;
     if (!getToken()) {
@@ -33,35 +48,49 @@ export default function AppLayout({
       return;
     }
 
-    api<Me>("/auth/me")
-      .then((user) => {
-        if (cancelled) return;
-        authedRef.current = true;
-        setMe(user);
+    loadMe().catch((err) => {
+      if (cancelled) return;
+      const msg = err instanceof Error ? err.message : "";
+      const unauthorized =
+        /שגוי|Unauthorized|401|jwt|token|לא מאומת|אימייל או סיסמה/i.test(msg);
+      if (unauthorized) {
+        setToken(null);
+        router.replace("/login");
+        return;
+      }
+      if (!authedRef.current) {
+        setGateError("אין קשר לשרת כרגע — נסו שוב");
         setReady(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        if (!authedRef.current) {
-          router.replace("/login");
-        }
-      });
+      }
+    });
 
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  // Keep onboarding flag fresh after /app/onboarding → /app (same layout instance).
   useEffect(() => {
-    if (!ready || !me) return;
-    if (!me.onboardingCompleted && !isOnboarding) {
-      router.replace("/app/onboarding");
-      return;
-    }
-    if (me.onboardingCompleted && isOnboarding) {
-      router.replace("/app");
-    }
-  }, [ready, me, isOnboarding, router]);
+    if (!ready || !getToken()) return;
+    let cancelled = false;
+    loadMe()
+      .then((user) => {
+        if (cancelled || !user) return;
+        if (!user.onboardingCompleted && !isOnboarding) {
+          router.replace("/app/onboarding");
+        } else if (user.onboardingCompleted && isOnboarding) {
+          router.replace("/app");
+        }
+      })
+      .catch(() => {
+        /* keep current screen; auth effect handles hard failures */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, ready, isOnboarding, router]);
 
   if (!ready) {
     return (
@@ -72,6 +101,27 @@ export default function AppLayout({
           <div className="skeleton-line sm" />
           <div className="skeleton-line md" />
         </div>
+      </div>
+    );
+  }
+
+  if (gateError && !me) {
+    return (
+      <div className="container" style={{ padding: "2rem 1rem" }}>
+        <p className="form-error" role="alert">
+          {gateError}
+        </p>
+        <button
+          className="btn"
+          type="button"
+          onClick={() => {
+            setReady(false);
+            setGateError(null);
+            loadMe().catch(() => router.replace("/login"));
+          }}
+        >
+          נסו שוב
+        </button>
       </div>
     );
   }
@@ -104,7 +154,11 @@ export default function AppLayout({
             תפריט
           </button>
         </div>
-        <div className="container" id="main-content">
+        <div
+          className="container screen-enter"
+          id="main-content"
+          key={pathname}
+        >
           {children}
         </div>
       </div>

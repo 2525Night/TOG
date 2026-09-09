@@ -729,7 +729,7 @@ function MoneyInner() {
     const params = new URLSearchParams(search.toString());
     if (next === "ALL") params.delete("dir");
     else params.set("dir", next);
-    router.replace(`/app/money?${params.toString()}`);
+    router.replace(`/app/money?${params.toString()}`, { scroll: false });
   }
 
   function setTab(next: "txs" | "import" | "fixed") {
@@ -737,7 +737,7 @@ function MoneyInner() {
     if (next === "import") params.set("tab", "import");
     else if (next === "fixed") params.set("tab", "fixed");
     else params.delete("tab");
-    router.replace(`/app/money?${params.toString()}`);
+    router.replace(`/app/money?${params.toString()}`, { scroll: false });
     if (next === "fixed") setFixedOpen(true);
     else if (next === "txs") setFixedOpen(false);
   }
@@ -1176,7 +1176,7 @@ function MoneyInner() {
         const params = new URLSearchParams(search.toString());
         params.set("month", result.period.defaultMonth);
         params.set("tab", "import");
-        router.replace(`/app/money?${params.toString()}`);
+        router.replace(`/app/money?${params.toString()}`, { scroll: false });
       }
       setMsg(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`);
       form.reset();
@@ -1243,7 +1243,7 @@ function MoneyInner() {
       await refresh();
       const params = new URLSearchParams();
       params.set("month", res.defaultMonth || month);
-      router.replace(`/app/money?${params.toString()}`);
+      router.replace(`/app/money?${params.toString()}`, { scroll: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
@@ -1981,7 +1981,9 @@ function MoneyInner() {
                   onClick={() => {
                     const params = new URLSearchParams(search.toString());
                     params.delete("category");
-                    router.replace(`/app/money?${params.toString()}`);
+                    router.replace(`/app/money?${params.toString()}`, {
+                      scroll: false,
+                    });
                   }}
                 >
                   נקה

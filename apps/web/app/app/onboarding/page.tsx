@@ -258,7 +258,9 @@ export default function OnboardingPage() {
         method: "POST",
         body: JSON.stringify(body),
       });
-      router.replace("/app");
+      // Full reload so app layout re-fetches me.onboardingCompleted=true
+      // (same layout instance would otherwise bounce back to onboarding).
+      window.location.assign("/app");
     } catch (err) {
       setError(
         err instanceof Error
