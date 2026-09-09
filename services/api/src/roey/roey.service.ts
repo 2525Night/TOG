@@ -239,7 +239,10 @@ export class RoeyService {
       })),
       userMessage,
     );
-    const output = modelOutput ?? this.fallbackOutput(built);
+    const output =
+      modelOutput && this.numbersAreGrounded(modelOutput, built.context)
+        ? modelOutput
+        : this.fallbackOutput(built);
     if (built.forecast.confidence === "LOW") output.confidence = "LOW";
 
     const persistedConversationId = memoryEnabled
@@ -435,6 +438,31 @@ export class RoeyService {
     };
   }
 
+  private numbersAreGrounded(
+    output: RoeyAgentOutput,
+    context: unknown,
+  ) {
+    const text = [
+      output.messageHe,
+      output.recommendationHe,
+      ...output.alternativesHe,
+      output.questionHe,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" ");
+    const claimed = extractNumbers(text);
+    if (claimed.length === 0) return true;
+    const allowed = new Set<number>([0, 1, 2, 3, 30, 60, 90, 100, 365]);
+    collectContextNumbers(context, allowed);
+    return claimed.every((value) =>
+      [...allowed].some(
+        (source) =>
+          Math.abs(value - source) <= Math.max(0.05, Math.abs(source) * 0.01) ||
+          value === Math.round(source),
+      ),
+    );
+  }
+
   private rateLimit(
     userId: string,
     action: string,
@@ -480,4 +508,30 @@ function safeJson(value: string | null) {
   } catch {
     return null;
   }
+}
+
+function collectContextNumbers(value: unknown, output: Set<number>) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    output.add(value);
+    return;
+  }
+  if (typeof value === "string") {
+    for (const number of extractNumbers(value)) output.add(number);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectContextNumbers(item, output);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) {
+      collectContextNumbers(item, output);
+    }
+  }
+}
+
+function extractNumbers(value: string) {
+  return (value.match(/-?\d[\d,]*(?:\.\d+)?/g) || [])
+    .map((item) => Number(item.replace(/,/g, "")))
+    .filter(Number.isFinite);
 }

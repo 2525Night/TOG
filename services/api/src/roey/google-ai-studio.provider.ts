@@ -7,10 +7,7 @@ import {
 } from "@nestjs/common";
 import { GoogleGenAI, type Content } from "@google/genai";
 import { ROEY_SYSTEM_PROMPT } from "./roey-prompt";
-import {
-  ROEY_RESPONSE_JSON_SCHEMA,
-  type RoeyAgentOutput,
-} from "./roey.types";
+import type { RoeyAgentOutput } from "./roey.types";
 
 export type GoogleModelOption = {
   id: string;
@@ -107,8 +104,6 @@ export class GoogleAiStudioProvider {
           systemInstruction: ROEY_SYSTEM_PROMPT,
           temperature: 0.2,
           maxOutputTokens: 900,
-          responseMimeType: "application/json",
-          responseJsonSchema: ROEY_RESPONSE_JSON_SCHEMA,
           httpOptions: { timeout: 25_000 },
         },
       });
@@ -175,14 +170,14 @@ export class GoogleAiStudioProvider {
       if (
         unfenced.length >= 2 &&
         unfenced.length <= 4_000 &&
-        !/\d/.test(unfenced)
+        !/^(?:\{|\[)/.test(unfenced)
       ) {
         return {
           messageHe: unfenced,
           recommendationHe: null,
           alternativesHe: [],
           questionHe: null,
-          confidence: "LOW",
+          confidence: "MEDIUM",
         };
       }
       return null;
