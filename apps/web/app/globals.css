@@ -136,7 +136,7 @@ a,
 }
 
 .is-native-app .mobile-topbar {
-  padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+  padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
   padding-inline: calc(0.85rem + env(safe-area-inset-right, 0px))
     calc(0.85rem + env(safe-area-inset-left, 0px));
 }
@@ -182,7 +182,7 @@ a,
 
 .is-native-app .period-bar {
   position: sticky;
-  top: 0;
+  top: var(--mt-topbar-offset, 3.25rem);
   z-index: 5;
 }
 
@@ -617,21 +617,41 @@ a,
   display: none;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  min-height: var(--mt-topbar);
-  background: rgba(255, 255, 255, 0.14);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0.45rem 0.85rem;
+  min-height: 3.25rem;
+  background: rgba(21, 32, 43, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
   position: sticky;
   top: 0;
-  z-index: 25;
-  backdrop-filter: blur(16px) saturate(1.15);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  z-index: 40;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   color: var(--text-on-dark);
+  box-sizing: border-box;
 }
 
 .mobile-topbar .brand {
   display: flex;
   align-items: center;
+  min-width: 0;
+}
+
+.mobile-topbar .brand-lockup {
+  transform: scale(0.92);
+  transform-origin: inline-start center;
+}
+
+.mobile-topbar .brand-lockup .m,
+.mobile-topbar .brand-lockup .ess {
+  color: #f3f7fa;
+}
+
+.mobile-topbar .brand-lockup .tail {
+  -webkit-text-stroke-color: #9fd0c2;
+}
+
+.mobile-topbar .brand-lockup .five {
+  color: #9fd0c2;
 }
 
 .mobile-topbar .brand-lockup--on-light .m,
@@ -2185,13 +2205,29 @@ a,
     z-index: 28;
   }
 
+  :root {
+    --mt-topbar-offset: calc(3.35rem + env(safe-area-inset-top, 0px));
+  }
+
   .mobile-topbar {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.55rem 0.85rem;
-    min-height: 52px;
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    width: 100%;
+    z-index: 40;
+  }
+
+  .app-main {
+    padding-top: var(--mt-topbar-offset);
+    /* Avoid overflow-x:hidden here — it breaks position:sticky/fixed descendants */
+    overflow-x: visible;
+    max-width: 100%;
+  }
+
+  .app-main > .container {
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
   .mobile-topbar .icon-btn {
@@ -2214,7 +2250,7 @@ a,
   /* Phone density — Layered Clarity adaptation (Design Idea android-phone) */
   .period-bar {
     position: sticky;
-    top: 0;
+    top: var(--mt-topbar-offset);
     z-index: 5;
     gap: 0.55rem;
     padding: 0.65rem 0.8rem;
@@ -4245,7 +4281,6 @@ button.linkish:disabled {
     overflow-x: hidden;
   }
 
-  .app-main,
   .app-content {
     overflow-x: hidden;
     max-width: 100%;

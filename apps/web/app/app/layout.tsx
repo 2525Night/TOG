@@ -149,6 +149,7 @@ export default function AppLayout({
             className="icon-btn"
             type="button"
             aria-label="תפריט"
+            aria-expanded={menuOpen}
             onClick={() => setMenuOpen(true)}
           >
             תפריט
