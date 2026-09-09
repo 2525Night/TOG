@@ -121,22 +121,7 @@ type ChatResponse = {
       reasonHe?: string;
     }>;
   };
-  actionProposal?: {
-    id: string;
-    type: string;
-    status: string;
-    severity: "INFO" | "WARNING" | "CRITICAL";
-    requiresDoubleConfirm: boolean;
-    expiresAt: string;
-    preview: {
-      titleHe?: string;
-      summaryHe?: string;
-      effectHe?: string;
-      alternativeHe?: string | null;
-      availableBefore?: number | null;
-      availableAfter?: number | null;
-    };
-  } | null;
+  actionProposal?: InlineActionProposal | null;
   escalation?: {
     id: string;
     type: string;
@@ -1083,7 +1068,10 @@ function AssistantMessage({
         <RoeyInlineAction
           proposal={{
             ...response.actionProposal,
-            expiresAt: String(response.actionProposal.expiresAt),
+            expiresAt:
+              typeof response.actionProposal.expiresAt === "string"
+                ? response.actionProposal.expiresAt
+                : new Date(response.actionProposal.expiresAt).toISOString(),
           }}
           busy={busy}
           onApproved={(updated) => {

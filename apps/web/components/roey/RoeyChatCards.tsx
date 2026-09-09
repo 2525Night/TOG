@@ -7,7 +7,7 @@ export type InlineActionProposal = {
   id: string;
   type: string;
   status: string;
-  severity: "INFO" | "WARNING" | "CRITICAL" | string;
+  severity: "INFO" | "WARNING" | "CRITICAL";
   requiresDoubleConfirm: boolean;
   expiresAt: string;
   preview: {

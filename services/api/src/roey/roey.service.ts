@@ -220,8 +220,13 @@ export class RoeyService {
     if (!connection.modelId) {
       throw new BadRequestException("יש לבחור מודל Google AI Studio");
     }
-    const built = await this.contextService.build(userId, dto.month);
-    const memoryEnabled = built.context.profile.memoryEnabled;
+    const memoryEnabled =
+      (
+        await this.prisma.roeyProfile.findUnique({
+          where: { userId },
+          select: { memoryEnabled: true },
+        })
+      )?.memoryEnabled ?? true;
     const conversation = memoryEnabled
       ? await this.resolveExistingConversation(userId, dto.conversationId)
       : null;
