@@ -3,17 +3,120 @@ const API_URL =
   (process.env.NODE_ENV === "production"
     ? "https://moneytail-api-vercel.vercel.app"
     : "http://localhost:3001");
+const TOKEN_KEY = "mt_token";
+const NATIVE_TOKEN_KEY = "moneytail.session.token";
+const SESSION_DB = "moneytail-session";
+const SESSION_STORE = "credentials";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("mt_token");
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
-  if (token) localStorage.setItem("mt_token", token);
-  else localStorage.removeItem("mt_token");
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+  void persistDurableToken(token);
   invalidateApiCache();
+}
+
+/** Restore Android session storage before deciding that the user is logged out. */
+export async function hydrateToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  const local = getToken();
+  const indexed = local ? null : await readIndexedToken();
+  if (indexed) {
+    localStorage.setItem(TOKEN_KEY, indexed);
+    void persistNativeToken(indexed);
+    return indexed;
+  }
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (!Capacitor.isNativePlatform()) return local;
+    const { Preferences } = await import("@capacitor/preferences");
+    if (local) {
+      await writeIndexedToken(local);
+      await Preferences.set({ key: NATIVE_TOKEN_KEY, value: local });
+      return local;
+    }
+    const stored = await Preferences.get({ key: NATIVE_TOKEN_KEY });
+    if (!stored.value) return null;
+    localStorage.setItem(TOKEN_KEY, stored.value);
+    await writeIndexedToken(stored.value);
+    return stored.value;
+  } catch {
+    return local;
+  }
+}
+
+async function persistDurableToken(token: string | null) {
+  await Promise.allSettled([
+    writeIndexedToken(token),
+    persistNativeToken(token),
+  ]);
+}
+
+async function persistNativeToken(token: string | null) {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+    if (!Capacitor.isNativePlatform()) return;
+    const { Preferences } = await import("@capacitor/preferences");
+    if (token) {
+      await Preferences.set({ key: NATIVE_TOKEN_KEY, value: token });
+    } else {
+      await Preferences.remove({ key: NATIVE_TOKEN_KEY });
+    }
+  } catch {
+    /* Native bridge may be unavailable in a normal browser. */
+  }
+}
+
+function sessionDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const request = indexedDB.open(SESSION_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(SESSION_STORE)) {
+        db.createObjectStore(SESSION_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+  });
+}
+
+async function readIndexedToken() {
+  const db = await sessionDb();
+  if (!db) return null;
+  return new Promise<string | null>((resolve) => {
+    const tx = db.transaction(SESSION_STORE, "readonly");
+    const request = tx.objectStore(SESSION_STORE).get(NATIVE_TOKEN_KEY);
+    request.onsuccess = () =>
+      resolve(typeof request.result === "string" ? request.result : null);
+    request.onerror = () => resolve(null);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+async function writeIndexedToken(token: string | null) {
+  const db = await sessionDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(SESSION_STORE, "readwrite");
+    const store = tx.objectStore(SESSION_STORE);
+    if (token) store.put(token, NATIVE_TOKEN_KEY);
+    else store.delete(NATIVE_TOKEN_KEY);
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  });
 }
 
 async function parseError(res: Response) {

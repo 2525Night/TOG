@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, setToken } from "@/lib/api";
+import { api, hydrateToken, setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
 import { ClarityGate } from "@/components/ClarityGate";
 
@@ -33,8 +33,35 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const [gateHref, setGateHref] = useState<string | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function restoreSession() {
+      try {
+        const token = await hydrateToken();
+        if (!token || cancelled) return;
+        const user = await api<{ onboardingCompleted?: boolean }>("/auth/me");
+        if (cancelled) return;
+        setGateHref(
+          user.onboardingCompleted === false ? "/app/onboarding" : "/app",
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (/Unauthorized|401|jwt|token|לא מאומת|נדרשת התחברות/i.test(message)) {
+          setToken(null);
+        }
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    }
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (error) emailRef.current?.focus();
@@ -104,7 +131,7 @@ export default function LoginPage() {
               autoComplete="email"
               inputMode="email"
               enterKeyHint="next"
-              disabled={!!gateHref}
+              disabled={!!gateHref || restoring}
             />
           </label>
           <label className="field">
@@ -120,7 +147,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 placeholder="השאירו ריק אם אין"
                 enterKeyHint="go"
-                disabled={!!gateHref}
+                disabled={!!gateHref || restoring}
               />
               <button
                 type="button"
@@ -129,7 +156,7 @@ export default function LoginPage() {
                 aria-pressed={showPassword}
                 aria-label={showPassword ? "הסתרת סיסמה" : "הצגת סיסמה"}
                 title={showPassword ? "הסתר" : "הצג"}
-                disabled={!!gateHref}
+                disabled={!!gateHref || restoring}
               >
                 <EyeIcon open={showPassword} />
               </button>
@@ -143,10 +170,14 @@ export default function LoginPage() {
           )}
           <button
             className="btn auth-submit"
-            disabled={loading || !!gateHref}
+            disabled={loading || restoring || !!gateHref}
             type="submit"
           >
-            {loading || gateHref ? "מתחברים…" : "היכנסו"}
+            {restoring
+              ? "בודקים סשן…"
+              : loading || gateHref
+                ? "מתחברים…"
+                : "היכנסו"}
           </button>
           <p className="auth-meta-row">
             <Link href="/register">הצטרפות קצרה</Link>

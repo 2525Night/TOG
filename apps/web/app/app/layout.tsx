@@ -5,7 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { BrandLockup } from "@/components/BrandLockup";
 import { RoeyLauncher } from "@/components/RoeyLauncher";
-import { api, getToken, setToken, invalidateApiCache } from "@/lib/api";
+import {
+  api,
+  getToken,
+  hydrateToken,
+  setToken,
+  invalidateApiCache,
+} from "@/lib/api";
 
 type Me = {
   id: string;
@@ -44,26 +50,30 @@ export default function AppLayout({
   // Auth gate — only send to login on missing/invalid token (401), not on network blips.
   useEffect(() => {
     let cancelled = false;
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-
-    loadMe().catch((err) => {
+    async function restoreAndAuthenticate() {
+      const token = await hydrateToken();
       if (cancelled) return;
-      const msg = err instanceof Error ? err.message : "";
-      const unauthorized =
-        /שגוי|Unauthorized|401|jwt|token|לא מאומת|אימייל או סיסמה/i.test(msg);
-      if (unauthorized) {
-        setToken(null);
+      if (!token) {
         router.replace("/login");
         return;
       }
-      if (!authedRef.current) {
-        setGateError("אין קשר לשרת כרגע — נסו שוב");
-        setReady(true);
-      }
-    });
+      loadMe().catch((err) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : "";
+        const unauthorized =
+          /שגוי|Unauthorized|401|jwt|token|לא מאומת|אימייל או סיסמה/i.test(msg);
+        if (unauthorized) {
+          setToken(null);
+          router.replace("/login");
+          return;
+        }
+        if (!authedRef.current) {
+          setGateError("אין קשר לשרת כרגע — נסו שוב");
+          setReady(true);
+        }
+      });
+    }
+    void restoreAndAuthenticate();
 
     return () => {
       cancelled = true;
