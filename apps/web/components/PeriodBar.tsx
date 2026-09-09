@@ -81,7 +81,7 @@ function setMonthOnRoute(
   router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 }
 
-export function monthOptionsAround(past = 12, future = 12): string[] {
+export function monthOptionsAround(past = 6, future = 2): string[] {
   const out: string[] = [];
   const now = new Date();
   for (let i = past; i >= 1; i--) {
@@ -233,6 +233,9 @@ type PeriodBarProps = {
   balanceLabel?: string;
   income?: number | null;
   expense?: number | null;
+  /** When ledger expense is empty but planned fixed exists. */
+  plannedExpense?: number | null;
+  expenseLabel?: string;
   extra?: ReactNode;
 };
 
@@ -241,8 +244,24 @@ export function PeriodBar({
   balanceLabel = "יתרה בעו״ש",
   income,
   expense,
+  plannedExpense,
+  expenseLabel,
   extra,
 }: PeriodBarProps) {
+  const showPlanned =
+    expense != null &&
+    Math.abs(expense) < 0.005 &&
+    plannedExpense != null &&
+    plannedExpense > 0.005;
+  const expenseValue = showPlanned ? plannedExpense : expense;
+  const expenseText =
+    expenseLabel || (showPlanned ? "קבועים מתוכננים" : "הוצאות");
+  const expenseClass = showPlanned
+    ? "tx-planned"
+    : expense != null && expense > 0
+      ? "tx-out"
+      : "tx-mute";
+
   return (
     <div className="period-bar">
       <MonthPicker />
@@ -257,9 +276,9 @@ export function PeriodBar({
             הכנסות <strong>{formatIls(income)}</strong>
           </span>
         )}
-        {expense != null && (
-          <span className="tx-out">
-            הוצאות <strong>{formatIls(expense)}</strong>
+        {expenseValue != null && (
+          <span className={expenseClass}>
+            {expenseText} <strong>{formatIls(expenseValue)}</strong>
           </span>
         )}
         {extra}

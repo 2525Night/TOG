@@ -63,7 +63,7 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
         )}
         {hideNav && <div style={{ flex: 1 }} />}
         <div className="sidebar-footer">
-          <div className="meta">Layered Clarity · בהירות + רגש</div>
+          <div className="meta">MoneyTail5 · מסע הכסף</div>
           <button
             className="btn quiet"
             type="button"

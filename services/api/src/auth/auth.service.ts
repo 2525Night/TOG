@@ -206,6 +206,7 @@ export class AuthService implements OnModuleInit {
         data: {
           userId,
           title: dto.goalTitle,
+          kind: "EMERGENCY",
           targetAmount: new Prisma.Decimal(dto.goalTargetAmount),
           currentAmount: new Prisma.Decimal(dto.goalCurrentAmount ?? 0),
           sourceType: "USER_INPUT",

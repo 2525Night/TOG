@@ -3499,6 +3499,16 @@ button.linkish:disabled {
   font-weight: 800;
 }
 
+.tx-planned {
+  color: var(--mt-ink, #1b2430);
+  font-weight: 750;
+}
+
+.tx-mute {
+  color: rgba(27, 36, 48, 0.55);
+  font-weight: 650;
+}
+
 .month-flow-optional {
   display: flex;
   flex-direction: column;

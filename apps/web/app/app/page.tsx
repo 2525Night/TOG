@@ -301,6 +301,14 @@ function DashboardInner() {
   const facts = data.monthFacts;
   const incomeForBar = facts?.flows.income ?? data.incomeMtd;
   const expenseForBar = facts?.flows.expense ?? data.expenseMtd;
+  const plannedFixed =
+    facts?.budget.fixed.expectedTotal ?? b?.fixed.expectedTotal ?? 0;
+  const usingExpectedFixed =
+    (facts?.budget.fixed.basisForLeftover ?? b?.fixed.basisForLeftover) ===
+      "expected" ||
+    (Math.abs(expenseForBar) < 0.005 && plannedFixed > 0.005);
+  const sparseSetup =
+    (facts?.meta?.txCount ?? 0) <= 2 && usingExpectedFixed;
   const toGoalsBar =
     facts?.flows.allocatedToGoals ??
     data.allocatedToGoalsMtd ??
@@ -312,6 +320,10 @@ function DashboardInner() {
     facts?.liquidity?.checkingBalanceNow ??
     facts?.checkingBalanceNow ??
     data.availableBalance;
+  const availableNow =
+    data.liquidity?.availableInPractice ??
+    facts?.liquidity?.availableInPractice ??
+    data.availableBalance;
 
   return (
     <div className="grid" style={{ gap: "0.85rem" }}>
@@ -319,7 +331,11 @@ function DashboardInner() {
         kicker="תמונת מצב"
         title="המצב שלך — בקצרה"
         subtitle={
-          data.narrativeHe ? (
+          sparseSetup ? (
+            <div>
+              התחלנו מהמספרים שהזנתם — עכשיו נדייק יחד עם תנועות אמיתיות.
+            </div>
+          ) : data.narrativeHe ? (
             <div>{data.narrativeHe}</div>
           ) : (
             <div>מבט רגוע על החודש</div>
@@ -330,8 +346,9 @@ function DashboardInner() {
       <PeriodBar
         income={incomeForBar}
         expense={expenseForBar}
+        plannedExpense={plannedFixed}
         extra={
-          leftoverBar != null ? (
+          leftoverBar != null && !sparseSetup ? (
             <span>
               נותר החודש{" "}
               <strong className={leftoverBar >= 0 ? "tx-in" : "tx-out"}>
@@ -344,6 +361,8 @@ function DashboardInner() {
                 </>
               )}
             </span>
+          ) : sparseSetup && plannedFixed > 0 ? (
+            <span className="muted">עדיין לא שולמו — רק התחייבויות</span>
           ) : null
         }
       />
@@ -471,61 +490,65 @@ function DashboardInner() {
       })()}
 
       <Pulse
-        tone={
-          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
-            ? "hold"
-            : data.netMtd >= 0
-              ? "win"
-              : "boost"
-        }
-        mark={
-          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
-            ? "!"
-            : data.netMtd >= 0
-              ? "✓"
-              : "♥"
-        }
-        label="ליווי רגשי"
+        tone={availableNow < 0 ? "hold" : sparseSetup ? "boost" : data.netMtd >= 0 ? "win" : "boost"}
+        mark={availableNow < 0 ? "!" : sparseSetup ? "→" : data.netMtd >= 0 ? "✓" : "♥"}
+        label={sparseSetup ? "הצעד הבא" : "ליווי רגשי"}
         title={
-          (data.liquidity?.availableInPractice ?? data.availableBalance) < 0
-            ? "יש לחץ — וגם יש מה לנהל"
-            : data.netMtd >= 0
-              ? "החודש עובד לטובתך"
-              : "אתה לא לבד מול המספרים"
+          availableNow < 0
+            ? "יש פער בין יתרה להתחייבויות"
+            : sparseSetup
+              ? "בסיס טוב — עכשיו נוסיף תנועה אחת"
+              : data.netMtd >= 0
+                ? "החודש עובד לטובתך"
+                : "אתה לא לבד מול המספרים"
         }
         text={
-          data.overdraftRisk.messageHe ||
-          (data.netMtd >= 0
-            ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
-            : "גם אם החיץ קצר, התמונה כאן כדי להרגיע ולכוון — לא כדי לשפוט.")
+          availableNow < 0
+            ? data.overdraftRisk.messageHe ||
+              "הזמין בפועל שלילי כי שמור לתשלומים גדול מהיתרה — זה אות לניהול, לא גזר דין."
+            : sparseSetup
+              ? "הוסיפו קנייה או הכנסה אחת מהחיים האמיתיים — התמונה תתחדד מיד."
+              : data.overdraftRisk.messageHe ||
+                (data.netMtd >= 0
+                  ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
+                  : "גם אם החיץ קצר, התמונה כאן כדי להרגיע ולכוון — לא כדי לשפוט.")
         }
       />
 
       <WinStrip
         items={[
-          {
-            label: "תזרים החודש",
-            value: `${data.netMtd >= 0 ? "+" : ""}${formatIls(data.netMtd)}`,
-          },
-          ...(data.goals[0]
+          ...(sparseSetup
             ? [
                 {
-                  label: "יעד מוביל",
-                  value: `${Math.round(data.goals[0].progressPct)}%`,
+                  label: "בסיס שהוגדר",
+                  value: formatIls(incomeForBar),
                 },
               ]
-            : []),
+            : [
+                {
+                  label: "תזרים החודש",
+                  value: `${data.netMtd >= 0 ? "+" : ""}${formatIls(data.netMtd)}`,
+                },
+              ]),
           ...(data.emergencyCushion
             ? [
                 {
-                  label: "חיץ",
+                  label: "חיץ להפתעות",
                   value: `${Math.round(data.emergencyCushion.progressPct)}%`,
                 },
               ]
-            : []),
+            : data.goals[0]
+              ? [
+                  {
+                    label: "יעד מוביל",
+                    value: `${Math.round(data.goals[0].progressPct)}%`,
+                  },
+                ]
+              : []),
         ]}
       />
 
+      {!sparseSetup && (
       <FeelRow
         items={[
           {
@@ -537,9 +560,11 @@ function DashboardInner() {
             emo: "להרגיש",
             title: "מה מותר להרגיש",
             text:
-              data.netMtd >= 0
-                ? "הקלה. יש כיוון. מותר לגאווה קטנה בלי להתעלם ממה שעוד חסר."
-                : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל.",
+              availableNow < 0
+                ? "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל."
+                : data.netMtd >= 0
+                  ? "הקלה. יש כיוון. מותר לגאווה קטנה בלי להתעלם ממה שעוד חסר."
+                  : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל.",
           },
           {
             emo: "לעשות",
@@ -549,6 +574,7 @@ function DashboardInner() {
           },
         ]}
       />
+      )}
 
       {(data.dataGaps || []).map((g) => (
         <section key={g.id} className="card alert-card insight-card" role="status">
