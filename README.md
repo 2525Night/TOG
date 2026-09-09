@@ -21,7 +21,7 @@
 apps/web      — אפליקציית משתמש (Next.js, פורט 3005)
 apps/admin    — לוח מנהל (Next.js, פורט 3002)
 apps/mobile   — מעטפת Android / Capacitor (MoneyTail5)
-services/api  — NestJS + Prisma + PostgreSQL/SQLite (פורט 3001)
+services/api  — NestJS + Prisma + PostgreSQL (פורט 3001)
 packages/shared — טיפוסים וקטגוריות משותפים
 ```
 
@@ -33,14 +33,15 @@ packages/shared — טיפוסים וקטגוריות משותפים
 npm install
 ```
 
-### 2. מסד נתונים (מקומי: SQLite)
+### 2. מסד נתונים (PostgreSQL)
 
 ```bash
+docker compose up -d postgres
 cp .env.example .env
 npm run db:push
 ```
 
-בייצור: PostgreSQL באזור **IL** (ראה `docker-compose.yml` כאופציה כשפורטים פנויים).
+בייצור: Neon Postgres המחובר לפרויקט ה־API ב־Vercel.
 
 ### 3. שרתים
 
@@ -83,10 +84,10 @@ npm run mobile:open
 - אדמין: רשימת משתמשים
 - ייבוא מסמכים עם כיוון לפי יתרה מצטברת
 - מעטפת Android (Capacitor) — דורשת Android Studio לבניית APK
+- Roey: חיבור אישי ל־Google AI Studio, שלב מסע, שיחה ותחזית 30/60/90
 
 ## מה עדיין לא
 
-- Roey (צ׳אט)
 - Open Banking (הפועלים / ONE ZERO) — דורש רישיון
 - אחסון ענן ב־IL בייצור
 - APK חתום לחנות / מצב offline מלא במובייל

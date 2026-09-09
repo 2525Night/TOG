@@ -54,3 +54,4 @@ apps/mobile/android/local.properties
 apps/mobile/dist/
 .tunnel-urls.txt
 
+.vercel

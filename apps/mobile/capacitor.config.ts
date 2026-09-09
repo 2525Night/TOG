@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
   appName: "MoneyTail5",
   webDir: "www",
   server: {
-    // Production web on Vercel (API on Fly: moneytail-api.fly.dev).
+    // Production web and API are hosted as separate Vercel projects.
     url: "https://moneytail-web.vercel.app",
     cleartext: false,
   },

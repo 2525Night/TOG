@@ -2,10 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Local MVP uses SQLite for zero-friction setup.
-// Production (IL): switch provider to postgresql + DATABASE_URL.
+// Neon Postgres is used by the Vercel API in every environment.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

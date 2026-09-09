@@ -1,7 +1,7 @@
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
   (process.env.NODE_ENV === "production"
-    ? "https://moneytail-api.fly.dev"
+    ? "https://moneytail-api-vercel.vercel.app"
     : "http://localhost:3001");
 
 export function getToken(): string | null {
