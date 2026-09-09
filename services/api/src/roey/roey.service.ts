@@ -19,7 +19,7 @@ import {
 import { RoeyContextService, DEFAULT_ROEY_PROFILE } from "./roey-context.service";
 import { RoeyCryptoService } from "./roey-crypto.service";
 import { RoeyJourneyService } from "./roey-journey.service";
-import type { RoeyChatResponse } from "./roey.types";
+import type { RoeyAgentOutput, RoeyChatResponse } from "./roey.types";
 
 @Injectable()
 export class RoeyService {
@@ -229,7 +229,7 @@ export class RoeyService {
           take: 8,
         })
       : [];
-    const output = await this.google.generate(
+    const modelOutput = await this.google.generate(
       this.crypto.decrypt(connection.encryptedCredential),
       connection.modelId,
       built.context,
@@ -239,6 +239,7 @@ export class RoeyService {
       })),
       userMessage,
     );
+    const output = modelOutput ?? this.fallbackOutput(built);
     if (built.forecast.confidence === "LOW") output.confidence = "LOW";
 
     const persistedConversationId = memoryEnabled
@@ -368,6 +369,31 @@ export class RoeyService {
         message,
       )
     );
+  }
+
+  private fallbackOutput(
+    built: Awaited<ReturnType<RoeyContextService["build"]>>,
+  ): RoeyAgentOutput {
+    const partial =
+      built.forecast.confidence === "LOW"
+        ? " התמונה עדיין חלקית, ולכן ההמלצה זהירה."
+        : "";
+    const recommendationHe =
+      built.risk.severity === "CRITICAL"
+        ? "להימנע כרגע מהתחייבות חדשה ולבדוק אילו תשלומים קרובים ניתן לצמצם או לדחות."
+        : built.risk.severity === "WARNING"
+          ? "לחזק את מרווח הביטחון לפני הוצאה או התחייבות חדשה."
+          : "להמשיך לעקוב אחר הזמין בפועל ולבחור צעד קטן שמקדם את היעד שלך.";
+    return {
+      messageHe: `${built.risk.titleHe}. ${built.risk.messageHe}${partial}`,
+      recommendationHe,
+      alternativesHe:
+        built.risk.severity === "INFO"
+          ? ["לעדכן נתונים חסרים", "לבדוק את תחזית 90 הימים"]
+          : ["לצמצם הוצאה גמישה", "לבדוק מחדש התחייבויות קרובות"],
+      questionHe: "איזה מהצעדים תרצה לבדוק קודם?",
+      confidence: built.forecast.confidence,
+    };
   }
 
   private rateLimit(

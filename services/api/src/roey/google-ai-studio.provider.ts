@@ -147,22 +147,39 @@ export class GoogleAiStudioProvider {
     return 3;
   }
 
-  private parseOutput(text: string): RoeyAgentOutput {
+  private parseOutput(text: string): RoeyAgentOutput | null {
     let value: unknown;
-    try {
-      value = JSON.parse(text);
-    } catch {
-      throw new BadGatewayException("המודל החזיר תשובה במבנה לא תקין");
+    const trimmed = text.trim();
+    const unfenced = trimmed
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+    const objectStart = unfenced.indexOf("{");
+    const objectEnd = unfenced.lastIndexOf("}");
+    const candidates = [
+      trimmed,
+      unfenced,
+      objectStart >= 0 && objectEnd > objectStart
+        ? unfenced.slice(objectStart, objectEnd + 1)
+        : "",
+    ].filter(Boolean);
+    for (const candidate of [...new Set(candidates)]) {
+      try {
+        value = JSON.parse(candidate);
+        break;
+      } catch {
+        value = undefined;
+      }
     }
     if (!value || typeof value !== "object") {
-      throw new BadGatewayException("המודל החזיר תשובה במבנה לא תקין");
+      return null;
     }
     const output = value as Partial<RoeyAgentOutput>;
     if (
       typeof output.messageHe !== "string" ||
       !["LOW", "MEDIUM", "HIGH"].includes(output.confidence || "")
     ) {
-      throw new BadGatewayException("המודל החזיר תשובה חסרה");
+      return null;
     }
     return {
       messageHe: output.messageHe.slice(0, 4_000),
