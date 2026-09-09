@@ -1,8 +1,9 @@
 import {
   BadGatewayException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
-  TooManyRequestsException,
 } from "@nestjs/common";
 import { GoogleGenAI, type Content } from "@google/genai";
 import { ROEY_SYSTEM_PROMPT } from "./roey-prompt";
@@ -183,14 +184,15 @@ export class GoogleAiStudioProvider {
     if (
       error instanceof BadRequestException ||
       error instanceof BadGatewayException ||
-      error instanceof TooManyRequestsException
+      error instanceof HttpException
     ) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
     if (/429|quota|rate.?limit|resource.?exhausted/i.test(message)) {
-      throw new TooManyRequestsException(
+      throw new HttpException(
         "מכסת Google AI Studio הסתיימה או שקצב הבקשות גבוה מדי",
+        HttpStatus.TOO_MANY_REQUESTS,
       );
     }
     if (
