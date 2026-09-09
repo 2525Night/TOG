@@ -31,7 +31,11 @@ export class GoogleAiStudioProvider {
     try {
       const ai = this.client(apiKey);
       const pager = await ai.models.list({
-        config: { pageSize: 100, queryBase: true },
+        config: {
+          pageSize: 100,
+          queryBase: true,
+          httpOptions: { timeout: 15_000 },
+        },
       });
       const models: GoogleModelOption[] = [];
       for await (const model of pager) {

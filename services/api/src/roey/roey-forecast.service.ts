@@ -88,7 +88,10 @@ export function classifyRoeyRisk(forecast: RoeyForecast): RoeyRisk {
     (point) => point.projectedAvailable < 0,
   );
 
-  if (forecast.startingAvailable < 0 || firstBaseNegative?.days === 30) {
+  if (
+    forecast.startingAvailable < 0 ||
+    (forecast.confidence !== "LOW" && firstBaseNegative?.days === 30)
+  ) {
     const amount = Math.abs(
       Math.min(
         forecast.startingAvailable,

@@ -1,5 +1,8 @@
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  (process.env.NODE_ENV === "production"
+    ? "https://moneytail-api.fly.dev"
+    : "http://localhost:3001");
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

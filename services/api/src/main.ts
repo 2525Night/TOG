@@ -16,6 +16,8 @@ async function bootstrap() {
       "http://127.0.0.1:3002",
       "capacitor://localhost",
       "http://localhost",
+      "https://moneytail-web.vercel.app",
+      /^https:\/\/moneytail(?:-[a-z0-9-]+)?-tog6\.vercel\.app$/,
       ...extraOrigins,
     ],
     credentials: true,

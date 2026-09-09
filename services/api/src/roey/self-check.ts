@@ -56,6 +56,17 @@ const risky = computeRoeyForecast({
 });
 assert.equal(classifyRoeyRisk(risky).severity, "CRITICAL");
 
+const lowConfidenceRisk = computeRoeyForecast({
+  startingAvailable: 200,
+  expectedIncome: 5_000,
+  expectedFixedExpenses: 4_500,
+  expectedFlexibleExpenses: 1_500,
+  completeness: 20,
+  signalsReliable: false,
+});
+assert.equal(lowConfidenceRisk.confidence, "LOW");
+assert.equal(classifyRoeyRisk(lowConfidenceRisk).severity, "WARNING");
+
 const crypto = new RoeyCryptoService(
   new ConfigService({
     ROEY_CREDENTIALS_ENCRYPTION_KEY:

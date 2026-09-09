@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -21,6 +23,8 @@ import type { RoeyChatResponse } from "./roey.types";
 
 @Injectable()
 export class RoeyService {
+  private readonly rateWindows = new Map<string, number[]>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: RoeyCryptoService,
@@ -48,30 +52,39 @@ export class RoeyService {
     userId: string,
     dto: ConnectGoogleAiStudioDto,
   ) {
+    this.rateLimit(userId, "connection", 5, 5 * 60_000);
     const apiKey = dto.apiKey.trim();
     const models = await this.google.listModels(apiKey);
     const preferred = this.google.preferredModel(models);
     const now = new Date();
+    const encryptedCredential = this.crypto.encrypt(apiKey);
     const row = await this.prisma.roeyAiConnection.upsert({
       where: { userId },
       create: {
         userId,
-        encryptedCredential: this.crypto.encrypt(apiKey),
+        encryptedCredential,
+        credentialKeyVersion: this.crypto.currentVersion,
         keyHint: this.crypto.keyHint(apiKey),
         modelId: preferred.id,
         status: "CONNECTED",
+        consentVersion: "2026-09-09",
+        consentedAt: now,
         lastValidatedAt: now,
       },
       update: {
-        encryptedCredential: this.crypto.encrypt(apiKey),
+        encryptedCredential,
+        credentialKeyVersion: this.crypto.currentVersion,
         keyHint: this.crypto.keyHint(apiKey),
         modelId: preferred.id,
         status: "CONNECTED",
+        consentVersion: "2026-09-09",
+        consentedAt: now,
         lastValidatedAt: now,
       },
     });
     await this.audit(userId, "ROEY_GOOGLE_CONNECTED", {
       modelId: preferred.id,
+      consentVersion: "2026-09-09",
     });
     return {
       connected: true,
@@ -84,7 +97,8 @@ export class RoeyService {
     };
   }
 
-  async testConnection(dto: ConnectGoogleAiStudioDto) {
+  async testConnection(userId: string, dto: ConnectGoogleAiStudioDto) {
+    this.rateLimit(userId, "connection", 5, 5 * 60_000);
     const models = await this.google.listModels(dto.apiKey.trim());
     return {
       ok: true,
@@ -94,6 +108,7 @@ export class RoeyService {
   }
 
   async models(userId: string) {
+    this.rateLimit(userId, "models", 10, 60_000);
     const connection = await this.requireConnection(userId);
     const models = await this.google.listModels(
       this.crypto.decrypt(connection.encryptedCredential),
@@ -106,6 +121,7 @@ export class RoeyService {
   }
 
   async selectModel(userId: string, dto: SelectRoeyModelDto) {
+    this.rateLimit(userId, "models", 10, 60_000);
     const connection = await this.requireConnection(userId);
     const models = await this.google.listModels(
       this.crypto.decrypt(connection.encryptedCredential),
@@ -164,6 +180,10 @@ export class RoeyService {
     await this.audit(userId, "ROEY_PROFILE_UPDATED", {
       fields: Object.keys(dto),
     });
+    if (dto.memoryEnabled === false) {
+      await this.prisma.roeyConversation.deleteMany({ where: { userId } });
+      await this.audit(userId, "ROEY_MEMORY_PURGED");
+    }
     return row;
   }
 
@@ -186,21 +206,29 @@ export class RoeyService {
   }
 
   async chat(userId: string, dto: RoeyChatDto): Promise<RoeyChatResponse> {
+    this.rateLimit(userId, "chat", 12, 60_000);
+    const userMessage = dto.message.trim();
+    if (this.containsLikelySecret(userMessage)) {
+      throw new BadRequestException(
+        "אין לשלוח ל-Roey סיסמה, API key או פרטי גישה",
+      );
+    }
     const connection = await this.requireConnection(userId);
     if (!connection.modelId) {
       throw new BadRequestException("יש לבחור מודל Google AI Studio");
     }
-    const conversation = await this.resolveConversation(
-      userId,
-      dto.conversationId,
-      dto.message,
-    );
-    const historyRows = await this.prisma.roeyMessage.findMany({
-      where: { userId, conversationId: conversation.id },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    });
     const built = await this.contextService.build(userId, dto.month);
+    const memoryEnabled = built.context.profile.memoryEnabled;
+    const conversation = memoryEnabled
+      ? await this.resolveExistingConversation(userId, dto.conversationId)
+      : null;
+    const historyRows = conversation
+      ? await this.prisma.roeyMessage.findMany({
+          where: { userId, conversationId: conversation.id },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+        })
+      : [];
     const output = await this.google.generate(
       this.crypto.decrypt(connection.encryptedCredential),
       connection.modelId,
@@ -209,51 +237,69 @@ export class RoeyService {
         role: message.role === "ASSISTANT" ? "model" : "user",
         content: message.contentHe,
       })),
-      dto.message.trim(),
+      userMessage,
     );
     if (built.forecast.confidence === "LOW") output.confidence = "LOW";
 
-    await this.prisma.$transaction([
-      this.prisma.roeyMessage.create({
-        data: {
-          userId,
-          conversationId: conversation.id,
-          role: "USER",
-          contentHe: dto.message.trim(),
-        },
-      }),
-      this.prisma.roeyMessage.create({
-        data: {
-          userId,
-          conversationId: conversation.id,
-          role: "ASSISTANT",
-          contentHe: output.messageHe,
+    const persistedConversationId = memoryEnabled
+      ? await this.prisma.$transaction(async (tx) => {
+          const row =
+            conversation ??
+            (await tx.roeyConversation.create({
+              data: {
+                userId,
+                titleHe: userMessage.slice(0, 80),
+              },
+            }));
+          await tx.roeyMessage.createMany({
+            data: [
+              {
+                userId,
+                conversationId: row.id,
+                role: "USER",
+                contentHe: userMessage,
+              },
+              {
+                userId,
+                conversationId: row.id,
+                role: "ASSISTANT",
+                contentHe: output.messageHe,
+                severity: built.risk.severity,
+                confidence: output.confidence,
+                sourcesJson: JSON.stringify(
+                  built.factsUsed.map((fact) => fact.source),
+                ),
+                modelId: connection.modelId,
+              },
+            ],
+          });
+          await tx.roeyConversation.update({
+            where: { id: row.id },
+            data: { updatedAt: new Date() },
+          });
+          await tx.auditEvent.create({
+            data: {
+              userId,
+              action: "ROEY_RESPONSE_GENERATED",
+              meta: JSON.stringify({
+                conversationId: row.id,
+                modelId: connection.modelId,
+                severity: built.risk.severity,
+                confidence: output.confidence,
+              }),
+            },
+          });
+          return row.id;
+        })
+      : (await this.audit(userId, "ROEY_EPHEMERAL_RESPONSE_GENERATED", {
+          modelId: connection.modelId,
           severity: built.risk.severity,
           confidence: output.confidence,
-          sourcesJson: JSON.stringify(built.factsUsed.map((fact) => fact.source)),
-          modelId: connection.modelId,
-        },
-      }),
-      this.prisma.roeyConversation.update({
-        where: { id: conversation.id },
-        data: { updatedAt: new Date() },
-      }),
-      this.prisma.auditEvent.create({
-        data: {
-          userId,
-          action: "ROEY_RESPONSE_GENERATED",
-          meta: JSON.stringify({
-            conversationId: conversation.id,
-            modelId: connection.modelId,
-            severity: built.risk.severity,
-            confidence: output.confidence,
-          }),
-        },
-      }),
-    ]);
+        }),
+        null);
 
     return {
-      conversationId: conversation.id,
+      conversationId: persistedConversationId,
       message: output,
       severity: built.risk.severity,
       risk: built.risk,
@@ -302,24 +348,47 @@ export class RoeyService {
     return row;
   }
 
-  private async resolveConversation(
+  private async resolveExistingConversation(
     userId: string,
     conversationId: string | undefined,
-    firstMessage: string,
   ) {
-    if (conversationId) {
-      const existing = await this.prisma.roeyConversation.findFirst({
-        where: { id: conversationId, userId },
-      });
-      if (!existing) throw new NotFoundException("השיחה לא נמצאה");
-      return existing;
-    }
-    return this.prisma.roeyConversation.create({
-      data: {
-        userId,
-        titleHe: firstMessage.trim().slice(0, 80),
-      },
+    if (!conversationId) return null;
+    const existing = await this.prisma.roeyConversation.findFirst({
+      where: { id: conversationId, userId },
     });
+    if (!existing) throw new NotFoundException("השיחה לא נמצאה");
+    return existing;
+  }
+
+  private containsLikelySecret(message: string) {
+    return (
+      /\bAIza[0-9A-Za-z_-]{30,}\b/.test(message) ||
+      /\bsk-[0-9A-Za-z_-]{20,}\b/.test(message) ||
+      /\b(api.?key|password|סיסמ[אה]|מפתח)\b.{0,20}[=: ]+[^\s]{20,}/i.test(
+        message,
+      )
+    );
+  }
+
+  private rateLimit(
+    userId: string,
+    action: string,
+    limit: number,
+    windowMs: number,
+  ) {
+    const key = `${userId}:${action}`;
+    const now = Date.now();
+    const recent = (this.rateWindows.get(key) || []).filter(
+      (timestamp) => now - timestamp < windowMs,
+    );
+    if (recent.length >= limit) {
+      throw new HttpException(
+        "בוצעו יותר מדי בקשות ל-Roey. נסו שוב בעוד רגע",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    recent.push(now);
+    this.rateWindows.set(key, recent);
   }
 
   private audit(

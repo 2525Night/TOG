@@ -65,7 +65,7 @@ export type RoeyAgentOutput = {
 };
 
 export type RoeyChatResponse = {
-  conversationId: string;
+  conversationId: string | null;
   message: RoeyAgentOutput;
   severity: RoeySeverity;
   risk: RoeyRisk;

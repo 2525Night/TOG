@@ -54,7 +54,7 @@ export class RoeyContextService {
         currency: "ILS",
         requestedMonth: summary.monthFacts.month,
         profile: {
-          primaryGoal: profile.primaryGoal,
+          primaryGoal: profile.memoryEnabled ? profile.primaryGoal : null,
           tone: profile.tone,
           assertiveness: profile.assertiveness,
           memoryEnabled: profile.memoryEnabled,

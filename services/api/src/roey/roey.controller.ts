@@ -30,8 +30,11 @@ export class RoeyController {
   }
 
   @Post("connections/test")
-  testConnection(@Body() dto: ConnectGoogleAiStudioDto) {
-    return this.roey.testConnection(dto);
+  testConnection(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ConnectGoogleAiStudioDto,
+  ) {
+    return this.roey.testConnection(user.userId, dto);
   }
 
   @Post("connections/google-ai-studio")

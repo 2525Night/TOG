@@ -78,7 +78,7 @@ type Fact = {
 };
 
 type ChatResponse = {
-  conversationId: string;
+  conversationId: string | null;
   severity: Risk["severity"];
   modelId: string;
   message: {
@@ -184,7 +184,11 @@ function RoeyPageInner() {
       setApiKey("");
       setConsent(false);
       setSuccess("החיבור ל-Google AI Studio הצליח");
-      await load();
+      const forecastResult = await api<{ forecast: Forecast; risk: Risk }>(
+        `/roey/forecast?month=${encodeURIComponent(month)}`,
+      );
+      setForecast(forecastResult.forecast);
+      setRisk(forecastResult.risk);
     } catch (err) {
       setError(err instanceof Error ? err.message : "החיבור נכשל");
     } finally {
