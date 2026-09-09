@@ -58,18 +58,22 @@ npm run dev:admin
   - סיסמה: `Pa$$word`  
 - API health: http://localhost:3001/api/health  
 
-## Android (MTail3)
+## Android (MTail3) — בקצרה
 
-מעטפת Capacitor ב־`apps/mobile`. פירוט מלא: [`apps/mobile/README.md`](apps/mobile/README.md)
+האפליקציה בטלפון היא **חלון** לאתר MoneyTail (לא מוצר נפרד).
+
+1. התקינו [Android Studio](https://developer.android.com/studio)
+2. ודאו ש־API + Web רצים (`3001` / `3005`)
+3. בתיקיית הפרויקט:
 
 ```bash
-npm install
-npm run mobile:add    # פעם אחת — יוצר apps/mobile/android
 npm run mobile:sync
-npm run mobile:open   # Android Studio
-# או אחרי התקנת JDK+SDK:
-npm run mobile:apk
+npm run mobile:open
 ```
+
+4. ב־Android Studio לחצו ▶ להרצה, או **Build → Build APK(s)** לקובץ התקנה
+
+מדריך מלא בעברית פשוטה: [`apps/mobile/README.md`](apps/mobile/README.md)
 
 ## מה כבר עובד (Phase 1)
 

@@ -1,0 +1,5 @@
+{
+  "installCommand": "cd ../.. && npm install",
+  "buildCommand": "cd ../.. && npm run build -w @moneytail/shared && npm run build -w @moneytail/web",
+  "framework": "nextjs"
+}

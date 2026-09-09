@@ -1,70 +1,125 @@
-# MoneyTail Android · MTail3
+# התקנת MoneyTail על אנדרואיד (MTail3)
 
-מעטפת **Capacitor** סביב אפליקציית ה־web הקיימת (`apps/web`).  
-אין צורך לשכתב את המוצר — ה־APK מציג את אותו UI ומדבר עם אותו API.
+## מה זה בכלל?
 
-## דרישות במחשב
+MoneyTail רצה היום בדפדפן (מחשב).  
+באנדרואיד בנינו **מעטפת** — אפליקציה שפותחת את אותו מסך בתוך הטלפון.
 
-1. **JDK 17+**
-2. **Android Studio** (עם Android SDK + Platform Tools)
-3. משתני סביבה: `ANDROID_HOME` / `ANDROID_SDK_ROOT`
-4. בפרויקט הראשי: API + Web רצים (`3001` / `3005`)
+חשוב לדעת:
+- זה **לא** אפליקציה עצמאית בלי שרת.
+- הטלפון צריך לראות את השרת שרץ במחשב שלכם (או שרת בענן בהמשך).
+- כדי ליצור קובץ התקנה (APK) צריך **Android Studio** במחשב.
 
-## התקנה חד־פעמית
+---
 
-משורש הריפו:
+## שלב 0 — חד־פעמי במחשב
+
+1. התקינו [Android Studio](https://developer.android.com/studio) (ההתקנה הרגילה מספיקה).
+2. בפתחה הראשונה בחרו Install / Standard וסיימו עד הסוף.
+3. ודאו ש־MoneyTail רץ במחשב:
+   - API: פורט **3001**
+   - אתר: פורט **3005**  
+   (כמו תמיד: `npm run dev:api` ו־`npm run dev:web`)
+
+---
+
+## שלב 1 — לפתוח את פרויקט האנדרואיד
+
+בתיקיית הפרויקט (`C:\Uri\A_Project`) בטרמינל:
 
 ```bash
-npm install
-npm run mobile:add
 npm run mobile:sync
 npm run mobile:open
 ```
 
-`mobile:open` פותח את הפרויקט ב־Android Studio.
+אמור להיפתח **Android Studio** עם הפרויקט  
+`apps/mobile/android`.
 
-## כתובת השרת (חשוב)
+אם Android Studio לא נפתח לבד:
+1. פתחו Android Studio ידנית
+2. File → Open
+3. בחרו את התיקייה: `C:\Uri\A_Project\apps\mobile\android`
 
-בקובץ `capacitor.config.ts`:
+חכו ש־Gradle יסיים להוריד דברים (פעם ראשונה זה לוקח כמה דקות).  
+כשסיים — למעלה יופיע שהפרויקט מוכן (בלי שגיאות אדומות גדולות).
 
-| סביבה | `server.url` |
-|--------|----------------|
-| אמולטור Android | `http://10.0.2.2:3005` (ברירת מחדל) |
-| מכשיר פיזי (אותה רשת) | `http://<IP-של-המחשב>:3005` |
-| פרודקשן | `https://your-domain` + `cleartext: false` |
+---
 
-אחרי שינוי כתובת:
+## שלב 2 — להריץ על אמולטור (מסך וירטואלי)
+
+1. ב־Android Studio, למעלה ליד כפתור הירוק ▶ בחרו מכשיר (למשל Pixel).
+2. אם אין מכשיר: Device Manager → Create Device → בחרו Pixel → Finish.
+3. לחצו ▶ Run.
+
+האפליקציה תיפתח באמולטור ותטען את MoneyTail מהמחשב  
+(`http://10.0.2.2:3005` — זה “localhost של המחשב” מנקודת מבט של האמולטור).
+
+אם רואים מסך לבן / שגיאת רשת: ודאו ש־`npm run dev:web` רץ על 3005.
+
+---
+
+## שלב 3 — ליצור קובץ APK ולהתקין על טלפון אמיתי
+
+### א. לבנות את הקובץ
+
+ב־Android Studio:
+
+1. תפריט **Build**
+2. **Build Bundle(s) / APK(s)**
+3. **Build APK(s)**
+4. חכו להודעת הצלחה → לחצו **locate**
+
+הקובץ יהיה בערך כאן:
+
+`apps\mobile\android\app\build\outputs\apk\debug\app-debug.apk`
+
+### ב. להתקין על הטלפון
+
+**אפשרות קלה:**  
+העבירו את `app-debug.apk` לטלפון (וואטסאפ / USB / Google Drive) ופתחו אותו.  
+אם אנדרואיד חוסם: הגדרות → לאפשר התקנה ממקור לא־ידוע לאפליקציה שהעבירה את הקובץ.
+
+**חשוב בטלפון אמיתי:**  
+הטלפון והמחשב חייבים להיות באותו Wi‑Fi, ואז צריך לעדכן כתובת:
+
+1. פתחו `apps/mobile/capacitor.config.ts`
+2. שנו את השורה `url` מ־`http://10.0.2.2:3005`  
+   ל־`http://כתובת-IP-של-המחשב:3005`  
+   (למשל `http://192.168.1.20:3005`)
+3. הרצו שוב:
 
 ```bash
 npm run mobile:sync
 ```
 
-וודאו ש־API זמין מהמכשיר (`NEXT_PUBLIC_API_URL` ב־web מצביע לכתובת נגישה — באמולטור לרוב `http://10.0.2.2:3001`).
+4. בנו APK מחדש ב־Android Studio.
 
-## בניית APK להתקנה
+איך למצוא IP במחשב (Windows): בטרמינל `ipconfig` → חפשו IPv4.
 
-### מ־Android Studio
-1. Build → Build Bundle(s) / APK(s) → Build APK(s)
-2. הקובץ יופיע תחת `apps/mobile/android/app/build/outputs/apk/`
+---
 
-### מטרמינל (אחרי ש־SDK מותקן)
+## מה לא צריך (כרגע)
 
-```bash
-npm run mobile:sync
-npm run mobile:apk
-```
+- לא צריך Google Play
+- לא צריך חתימת חנות
+- לא צריך `mobile:add` שוב — תיקיית `android` כבר קיימת
 
-APK דיבוג:  
-`apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+---
 
-להתקנה על מכשיר מחובר:
+## תקלות נפוצות
 
-```bash
-adb install -r apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-```
+| מה רואים | מה לעשות |
+|----------|----------|
+| Android Studio לא מותקן / לא נפתח | התקינו מהקישור למעלה, ואז Open על `apps/mobile/android` |
+| מסך ריק באפליקציה | ודאו ש־web רץ על 3005, וש־`url` ב־config נכון |
+| הטלפון לא מתקין APK | אפשרו “התקנה ממקורות לא ידועים” |
+| בטלפון “אין חיבור” | אותו Wi‑Fi + IP של המחשב ב־config + חומת אש של Windows לא חוסמת פורט 3005 |
 
-## הערות
+---
 
-- האפליקציה דורשת רשת לשרת (web + API) — זה לא מצב offline מלא.
-- חתימת release לחנות Google Play דורשת keystore נפרד (לא נכלל בריפו).
-- מזהה חבילה: `com.mtails.moneytail`
+## בקצרה
+
+1. התקינו Android Studio  
+2. `npm run mobile:sync` ואז `npm run mobile:open`  
+3. לחצו ▶ להרצה, או Build APK להתקנה על הטלפון  
+4. האפליקציה מציגה את אותו MoneyTail — כל עוד השרת במחשב רץ

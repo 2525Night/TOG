@@ -51,4 +51,6 @@ apps/mobile/android/local.properties
 *.aab
 *.jks
 *.keystore
+apps/mobile/dist/
+.tunnel-urls.txt
 

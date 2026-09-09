@@ -14,8 +14,9 @@ const config: CapacitorConfig = {
   appName: "MoneyTail",
   webDir: "www",
   server: {
-    url: "http://10.0.2.2:3005",
-    cleartext: true,
+    // Remote HTTPS via Cloudflare tunnel (session). Replace with Vercel/Fly prod URLs when stable.
+    url: "https://indexes-chocolate-generators-coupon.trycloudflare.com",
+    cleartext: false,
   },
   android: {
     allowMixedContent: true,
