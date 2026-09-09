@@ -16,8 +16,9 @@ const rubik = Rubik({
 });
 
 export const metadata: Metadata = {
-  title: "MoneyTail — תמונת מצב כלכלית",
-  description: "מערכת בינה פיננסית אישית לישראל",
+  title: "MoneyTail5 — מסע הכסף",
+  description:
+    "מלווה אתכם במסע הכסף: מעקב, דפוסים והצעד הבא — בעברית ובשקלים",
   icons: {
     icon: [{ url: "/app-icon.png", type: "image/png" }],
     apple: [{ url: "/app-icon.png" }],
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "MoneyTail",
+    title: "MoneyTail5",
   },
   formatDetection: {
     telephone: false,

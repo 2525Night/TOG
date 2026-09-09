@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * MoneyTail Android (MTail3)
+ * MoneyTail5 Android
  *
  * By default the WebView loads the Next.js app on the host machine
  * (Android emulator → 10.0.2.2:3005).
@@ -11,7 +11,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  */
 const config: CapacitorConfig = {
   appId: "com.mtails.moneytail",
-  appName: "MoneyTail",
+  appName: "MoneyTail5",
   webDir: "www",
   server: {
     // Production web on Vercel (API on Fly: moneytail-api.fly.dev).
