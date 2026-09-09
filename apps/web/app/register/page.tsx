@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { api, setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
+import { ClarityGate } from "@/components/ClarityGate";
 
 export default function RegisterPage() {
   const [displayName, setDisplayName] = useState("");
@@ -11,6 +12,12 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [gateHref, setGateHref] = useState<string | null>(null);
+
+  const finishGate = useCallback(() => {
+    if (!gateHref) return;
+    window.location.assign(gateHref);
+  }, [gateHref]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -22,29 +29,34 @@ export default function RegisterPage() {
         body: JSON.stringify({ email, password, displayName }),
       });
       setToken(res.accessToken);
-      window.location.assign("/app/onboarding");
+      setGateHref("/app/onboarding");
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "לא הצלחנו ליצור חשבון — נסו שוב",
       );
-    } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="auth-shell">
+    <main className="auth-shell auth-shell--phone auth-shell--mood">
+      {gateHref && (
+        <ClarityGate message="רק רגע… מתחילים" onDone={finishGate} />
+      )}
       <a className="skip-link" href="#main-content">
         דלגו לתוכן
       </a>
       <div className="auth-brand-plane" id="main-content">
-        <section className="auth-brand-copy">
-          <BrandLockup size="lg" onLight />
+        <section className="auth-brand-copy auth-rise">
+          <BrandLockup size="lg" />
           <p>כמה פרטים קצרים — ואז נבנה יחד תמונה ברורה של הכסף.</p>
         </section>
-        <form className="auth-panel" onSubmit={onSubmit}>
+        <form
+          className="auth-panel auth-rise auth-rise-delay"
+          onSubmit={onSubmit}
+        >
           <h1 className="auth-panel-title">הצטרפות</h1>
           <label className="field">
             <span>איך לקרוא לכם?</span>
@@ -53,6 +65,7 @@ export default function RegisterPage() {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="למשל: אורי"
               autoComplete="nickname"
+              disabled={!!gateHref}
             />
           </label>
           <label className="field">
@@ -63,6 +76,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              disabled={!!gateHref}
             />
           </label>
           <label className="field">
@@ -74,6 +88,7 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
+              disabled={!!gateHref}
             />
             <span className="field-hint">שומרים אותה אצלכם — לא נשתף.</span>
           </label>
@@ -82,11 +97,15 @@ export default function RegisterPage() {
               {error}
             </p>
           )}
-          <button className="btn" disabled={loading} type="submit">
-            {loading ? "יוצרים…" : "בואו נתחיל"}
+          <button
+            className="btn auth-submit"
+            disabled={loading || !!gateHref}
+            type="submit"
+          >
+            {loading || gateHref ? "יוצרים…" : "בואו נתחיל"}
           </button>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            כבר רשומים? <Link href="/login">התחברות</Link>
+          <p className="auth-meta-row">
+            <Link href="/login">התחברות</Link>
           </p>
         </form>
       </div>

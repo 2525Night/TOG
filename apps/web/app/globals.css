@@ -735,6 +735,146 @@ a,
   }
 }
 
+/* ——— Clarity Gate (post-auth brand moment) ——— */
+.clarity-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: #15202b;
+  animation: clarity-gate-in 0.18s ease both;
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+}
+
+.clarity-gate-mood {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(155deg, rgba(21, 32, 43, 0.42), rgba(21, 32, 43, 0.72)),
+    url("/mood.png") center / cover no-repeat;
+  opacity: 0;
+  animation: clarity-mood-in 0.7s ease 0.12s both;
+}
+
+.clarity-gate-center {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.clarity-gate-lockup {
+  transform-origin: center center;
+}
+
+.clarity-gate-lockup .brand-lockup .ring {
+  animation: clarity-ring-breathe 1s ease-in-out both;
+}
+
+.clarity-gate-lockup .brand-lockup .tail {
+  animation: clarity-tail-glow 0.9s ease 0.15s both;
+}
+
+.clarity-gate-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mt-mint);
+  animation: clarity-pulse 0.9s ease-in-out infinite;
+}
+
+.clarity-gate-msg {
+  margin: 0;
+  color: rgba(243, 247, 250, 0.72);
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+.clarity-gate--out {
+  animation: clarity-gate-out 0.28s ease both;
+}
+
+@keyframes clarity-gate-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes clarity-gate-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes clarity-mood-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.88;
+  }
+}
+
+@keyframes clarity-ring-breathe {
+  0% {
+    transform: scale(0.92);
+  }
+  45% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes clarity-tail-glow {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes clarity-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clarity-gate-mood,
+  .clarity-gate-lockup .brand-lockup .ring,
+  .clarity-gate-lockup .brand-lockup .tail,
+  .clarity-gate-pulse {
+    animation: none !important;
+  }
+
+  .clarity-gate-mood {
+    opacity: 0.75;
+  }
+
+  .clarity-gate-pulse {
+    opacity: 0.8;
+  }
+}
+
 .auth-brand-plane {
   width: min(920px, 100%);
   display: grid;

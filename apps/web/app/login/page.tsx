@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api, setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
+import { ClarityGate } from "@/components/ClarityGate";
 
 function EyeIcon({ open }: { open: boolean }) {
   if (open) {
@@ -32,11 +33,17 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [gateHref, setGateHref] = useState<string | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (error) emailRef.current?.focus();
   }, [error]);
+
+  const finishGate = useCallback(() => {
+    if (!gateHref) return;
+    window.location.assign(gateHref);
+  }, [gateHref]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -51,7 +58,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       setToken(res.accessToken);
-      window.location.assign(
+      setGateHref(
         res.user?.onboardingCompleted === false ? "/app/onboarding" : "/app",
       );
     } catch (err) {
@@ -60,13 +67,18 @@ export default function LoginPage() {
           ? err.message
           : "לא הצלחנו להתחבר — בדקו את הפרטים ונסו שוב",
       );
-    } finally {
       setLoading(false);
     }
   }
 
   return (
     <main className="auth-shell auth-shell--phone auth-shell--mood">
+      {gateHref && (
+        <ClarityGate
+          message="רק רגע… התמונה בדרך"
+          onDone={finishGate}
+        />
+      )}
       <a className="skip-link" href="#main-content">
         דלגו לתוכן
       </a>
@@ -75,7 +87,11 @@ export default function LoginPage() {
           <BrandLockup size="lg" />
           <p>שמחים שחזרתם — התמונה מחכה לכם.</p>
         </section>
-        <form className="auth-panel auth-rise auth-rise-delay" onSubmit={onSubmit} noValidate>
+        <form
+          className="auth-panel auth-rise auth-rise-delay"
+          onSubmit={onSubmit}
+          noValidate
+        >
           <h1 className="auth-panel-title">התחברות</h1>
           <label className="field">
             <span>אימייל</span>
@@ -88,6 +104,7 @@ export default function LoginPage() {
               autoComplete="email"
               inputMode="email"
               enterKeyHint="next"
+              disabled={!!gateHref}
             />
           </label>
           <label className="field">
@@ -103,6 +120,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 placeholder="השאירו ריק אם אין"
                 enterKeyHint="go"
+                disabled={!!gateHref}
               />
               <button
                 type="button"
@@ -111,6 +129,7 @@ export default function LoginPage() {
                 aria-pressed={showPassword}
                 aria-label={showPassword ? "הסתרת סיסמה" : "הצגת סיסמה"}
                 title={showPassword ? "הסתר" : "הצג"}
+                disabled={!!gateHref}
               >
                 <EyeIcon open={showPassword} />
               </button>
@@ -122,8 +141,12 @@ export default function LoginPage() {
               {error}
             </p>
           )}
-          <button className="btn auth-submit" disabled={loading} type="submit">
-            {loading ? "מתחברים…" : "היכנסו"}
+          <button
+            className="btn auth-submit"
+            disabled={loading || !!gateHref}
+            type="submit"
+          >
+            {loading || gateHref ? "מתחברים…" : "היכנסו"}
           </button>
           <p className="auth-meta-row">
             <Link href="/register">הצטרפות קצרה</Link>
