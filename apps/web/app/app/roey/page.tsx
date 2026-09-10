@@ -229,14 +229,26 @@ function RoeyPageInner() {
         } else {
           setSessions([]);
         }
-        if (!nextConnection.platformManaged) {
+        try {
           const modelResult = await api<{
             models: ModelOption[];
             selectedModelId: string | null;
           }>("/roey/connections/models");
           setModels(modelResult.models);
-        } else {
+          if (modelResult.selectedModelId) {
+            setConnection((current) =>
+              current
+                ? { ...current, modelId: modelResult.selectedModelId }
+                : current,
+            );
+          }
+        } catch (modelErr) {
           setModels([]);
+          setError(
+            modelErr instanceof Error
+              ? modelErr.message
+              : "לא ניתן לטעון את רשימת המודלים",
+          );
         }
       } else {
         setModels([]);
@@ -347,13 +359,10 @@ function RoeyPageInner() {
     try {
       await api("/roey/connections/google-ai-studio", { method: "DELETE" });
       setDisconnectOpen(false);
-      setConnection({ connected: false });
-      setModels([]);
-      setForecast(null);
-      setRisk(null);
       setMessages([]);
       setConversationId(null);
-      setSuccess("החיבור נותק והמפתח נמחק");
+      setSuccess("המפתח האישי נמחק. אם יש מפתח מובנה — Roey נשאר מחובר.");
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "הניתוק נכשל");
     } finally {
@@ -875,25 +884,35 @@ function RoeyPageInner() {
               <div className="roey-settings-form">
                 <p className="roey-connection-ok">
                   <span aria-hidden="true">✓</span>
-                  מחובר · מפתח שמסתיים ב־{connection.keyHint}
+                  {connection.platformManaged
+                    ? "מחובר במפתח מובנה של MoneyTail5"
+                    : `מחובר · מפתח שמסתיים ב־${connection.keyHint}`}
                 </p>
                 <label className="field">
                   <span>מודל פעיל</span>
                   <select
                     name="roeyModel"
                     value={connection.modelId || ""}
-                    disabled={busy}
+                    disabled={busy || models.length === 0}
                     onChange={(event) => void selectModel(event.target.value)}
                   >
-                    {models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.displayName}
+                    {models.length === 0 ? (
+                      <option value={connection.modelId || ""}>
+                        {connection.modelId || "טוען מודלים…"}
                       </option>
-                    ))}
+                    ) : (
+                      models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.displayName}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </label>
                 <p className="field-hint">
-                  הרשימה מתקבלת ישירות מ-Google בהתאם למפתח שלך.
+                  {connection.platformManaged
+                    ? "רשימת המודלים מגיעה מ-Google דרך המפתח המובנה של MoneyTail5."
+                    : "הרשימה מתקבלת ישירות מ-Google בהתאם למפתח שלך."}
                 </p>
                 <button
                   className="btn secondary"
@@ -903,14 +922,21 @@ function RoeyPageInner() {
                 >
                   בדיקת חיבור מחדש
                 </button>
-                <button
-                  className="btn quiet"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setDisconnectOpen(true)}
-                >
-                  ניתוק ומחיקת המפתח
-                </button>
+                {!connection.platformManaged ? (
+                  <button
+                    className="btn quiet"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDisconnectOpen(true)}
+                  >
+                    ניתוק ומחיקת המפתח
+                  </button>
+                ) : (
+                  <p className="muted" style={{ margin: 0 }}>
+                    החיבור עובד אוטומטית עם מפתח MoneyTail5 — בחרו מודל והתחילו
+                    לדבר בטאב השיחה.
+                  </p>
+                )}
               </div>
             )}
           </div>

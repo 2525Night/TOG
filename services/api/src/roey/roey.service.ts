@@ -41,6 +41,18 @@ export class RoeyService {
     const row = await this.prisma.roeyAiConnection.findUnique({
       where: { userId },
     });
+    const platform = this.platformCredentials();
+    if (row?.provider === "PLATFORM" && platform) {
+      return {
+        connected: true as const,
+        provider: "PLATFORM" as const,
+        keyHint: "מובנה ב־MoneyTail5",
+        modelId: row.modelId || platform.modelId,
+        status: "CONNECTED" as const,
+        lastValidatedAt: row.lastValidatedAt,
+        platformManaged: true as const,
+      };
+    }
     if (row) {
       return {
         connected: true as const,
@@ -52,7 +64,6 @@ export class RoeyService {
         platformManaged: false as const,
       };
     }
-    const platform = this.platformCredentials();
     if (platform) {
       return {
         connected: true as const,
@@ -128,39 +139,88 @@ export class RoeyService {
 
   async models(userId: string) {
     this.rateLimit(userId, "models", 10, 60_000);
-    const connection = await this.requireConnection(userId);
-    const models = await this.google.listModels(
-      this.crypto.decrypt(connection.encryptedCredential),
-    );
-    await this.prisma.roeyAiConnection.update({
-      where: { userId },
-      data: { lastValidatedAt: new Date(), status: "CONNECTED" },
-    });
-    return { models, selectedModelId: connection.modelId };
+    let credentials = await this.resolveApiCredentials(userId);
+    let models: Awaited<ReturnType<GoogleAiStudioProvider["listModels"]>>;
+    try {
+      models = await this.google.listModels(credentials.apiKey);
+    } catch (error) {
+      const platform = this.platformCredentials();
+      if (credentials.source === "user" && platform) {
+        credentials = { ...platform, source: "platform" };
+        models = await this.google.listModels(credentials.apiKey);
+      } else {
+        throw error;
+      }
+    }
+    if (credentials.source === "user") {
+      await this.prisma.roeyAiConnection.updateMany({
+        where: { userId },
+        data: { lastValidatedAt: new Date(), status: "CONNECTED" },
+      });
+    }
+    return {
+      models,
+      selectedModelId: credentials.modelId,
+      platformManaged: credentials.source === "platform",
+    };
   }
 
   async selectModel(userId: string, dto: SelectRoeyModelDto) {
     this.rateLimit(userId, "models", 10, 60_000);
-    const connection = await this.requireConnection(userId);
-    const models = await this.google.listModels(
-      this.crypto.decrypt(connection.encryptedCredential),
-    );
+    const credentials = await this.resolveApiCredentials(userId);
+    const models = await this.google.listModels(credentials.apiKey);
     const selected = models.find((model) => model.id === dto.modelId);
     if (!selected) {
       throw new BadRequestException(
         "המודל שנבחר אינו זמין עבור החיבור הזה",
       );
     }
-    await this.prisma.roeyAiConnection.update({
-      where: { userId },
-      data: {
-        modelId: selected.id,
-        status: "CONNECTED",
-        lastValidatedAt: new Date(),
-      },
-    });
+    const now = new Date();
+    if (credentials.source === "user") {
+      await this.prisma.roeyAiConnection.update({
+        where: { userId },
+        data: {
+          modelId: selected.id,
+          status: "CONNECTED",
+          lastValidatedAt: now,
+        },
+      });
+    } else {
+      const platform = this.platformCredentials();
+      if (!platform) {
+        throw new BadRequestException(
+          "יש לחבר את Roey ל-Google AI Studio תחילה",
+        );
+      }
+      // Persist model preference for platform-managed users without BYOK.
+      await this.prisma.roeyAiConnection.upsert({
+        where: { userId },
+        create: {
+          userId,
+          provider: "PLATFORM",
+          encryptedCredential: this.crypto.encrypt(platform.apiKey),
+          credentialKeyVersion: this.crypto.currentVersion,
+          keyHint: "מובנה ב־MoneyTail5",
+          modelId: selected.id,
+          status: "CONNECTED",
+          consentVersion: "platform-2026-09-10",
+          consentedAt: now,
+          lastValidatedAt: now,
+        },
+        update: {
+          provider: "PLATFORM",
+          encryptedCredential: this.crypto.encrypt(platform.apiKey),
+          credentialKeyVersion: this.crypto.currentVersion,
+          keyHint: "מובנה ב־MoneyTail5",
+          modelId: selected.id,
+          status: "CONNECTED",
+          lastValidatedAt: now,
+        },
+      });
+    }
     await this.audit(userId, "ROEY_MODEL_SELECTED", {
       modelId: selected.id,
+      source: credentials.source,
     });
     return { ok: true, modelId: selected.id };
   }
@@ -231,7 +291,7 @@ export class RoeyService {
         "אין לשלוח ל-Roey סיסמה, API key או פרטי גישה",
       );
     }
-    const credentials = await this.resolveApiCredentials(userId);
+    let credentials = await this.resolveApiCredentials(userId);
     if (!credentials.modelId) {
       throw new BadRequestException("יש לבחור מודל Google AI Studio");
     }
@@ -252,19 +312,39 @@ export class RoeyService {
           take: 8,
         })
       : [];
-    const turn = await this.orchestrator.execute({
-      userId,
-      conversationId: conversation?.id ?? null,
-      message: userMessage,
-      month: dto.month,
-      apiKey: credentials.apiKey,
-      modelId: credentials.modelId,
-      history:
-      historyRows.reverse().map((message) => ({
-        role: message.role === "ASSISTANT" ? "model" : "user",
-        content: message.contentHe,
-      })),
-    });
+    const history = historyRows.reverse().map((message) => ({
+      role: message.role === "ASSISTANT" ? ("model" as const) : ("user" as const),
+      content: message.contentHe,
+    }));
+
+    let turn;
+    try {
+      turn = await this.orchestrator.execute({
+        userId,
+        conversationId: conversation?.id ?? null,
+        message: userMessage,
+        month: dto.month,
+        apiKey: credentials.apiKey,
+        modelId: credentials.modelId,
+        history,
+      });
+    } catch (error) {
+      const platform = this.platformCredentials();
+      if (credentials.source === "user" && platform) {
+        credentials = { ...platform, source: "platform" };
+        turn = await this.orchestrator.execute({
+          userId,
+          conversationId: conversation?.id ?? null,
+          message: userMessage,
+          month: dto.month,
+          apiKey: credentials.apiKey,
+          modelId: credentials.modelId,
+          history,
+        });
+      } else {
+        throw error;
+      }
+    }
     const { built } = turn;
     // Orchestrator already grounded/sanitized the model output.
     const output = turn.output ?? this.fallbackOutput(built);
@@ -465,14 +545,29 @@ export class RoeyService {
     const row = await this.prisma.roeyAiConnection.findUnique({
       where: { userId },
     });
-    if (row?.modelId) {
+    const platform = this.platformCredentials();
+
+    // Platform-preference rows keep a chosen modelId but always use live server key.
+    if (row?.provider === "PLATFORM" && platform) {
       return {
-        apiKey: this.crypto.decrypt(row.encryptedCredential),
-        modelId: row.modelId,
-        source: "user",
+        apiKey: platform.apiKey,
+        modelId: row.modelId || platform.modelId,
+        source: "platform",
       };
     }
-    const platform = this.platformCredentials();
+
+    if (row?.modelId) {
+      try {
+        return {
+          apiKey: this.crypto.decrypt(row.encryptedCredential),
+          modelId: row.modelId,
+          source: "user",
+        };
+      } catch {
+        // Broken/outdated personal key → fall back to platform when available.
+      }
+    }
+
     if (platform) {
       return { ...platform, source: "platform" };
     }
