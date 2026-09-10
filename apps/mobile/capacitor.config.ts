@@ -14,8 +14,8 @@ const config: CapacitorConfig = {
   appName: "MoneyTail5",
   webDir: "www",
   server: {
-    // Production web and API are hosted as separate Vercel projects.
-    url: "https://moneytail-web.vercel.app",
+    // Point at the latest branch preview until production aliases catch up to 6608a0d.
+    url: "https://moneytail-web-git-cursor-roey-google-ai-mvp-b7d6-tog6.vercel.app",
     cleartext: false,
   },
   android: {
