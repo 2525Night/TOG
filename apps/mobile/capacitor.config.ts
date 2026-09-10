@@ -14,8 +14,8 @@ const config: CapacitorConfig = {
   appName: "MoneyTail5",
   webDir: "www",
   server: {
-    // Point at the latest branch preview until production aliases catch up to 6608a0d.
-    url: "https://moneytail-web-git-cursor-roey-google-ai-mvp-b7d6-tog6.vercel.app",
+    // Production domain (SSO-free). Rebuild after main→prod deploy is READY.
+    url: "https://moneytail-web.vercel.app",
     cleartext: false,
   },
   android: {
