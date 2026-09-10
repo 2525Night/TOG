@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, SourceType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BudgetService } from "../budget/budget.service";
 import { MonthFactsService } from "../month-facts/month-facts.service";
@@ -448,7 +448,16 @@ export class GoalsService {
     });
   }
 
-  async applySurplus(userId: string, id: string, dto: ApplySurplusDto) {
+  async applySurplus(
+    userId: string,
+    id: string,
+    dto: ApplySurplusDto,
+    options: {
+      sourceType?: SourceType;
+      auditAction?: string;
+      proposalId?: string;
+    } = {},
+  ) {
     if (!dto.confirm) {
       throw new BadRequestException(
         "נדרש אישור מפורש (confirm: true) לפני הקצאת עודף ליעד",
@@ -458,9 +467,6 @@ export class GoalsService {
     if (!(amount > 0)) {
       throw new BadRequestException("סכום לא תקין");
     }
-    const existing = await this.prisma.goal.findFirst({ where: { id, userId } });
-    if (!existing) throw new NotFoundException("יעד לא נמצא");
-
     const month =
       dto.month && /^\d{4}-\d{2}$/.test(dto.month)
         ? dto.month
@@ -469,59 +475,93 @@ export class GoalsService {
     const isFuture = month > nowKey;
     const isPastOrCurrent = month <= nowKey;
 
-    if (isPastOrCurrent) {
-      const snap = await this.budget.snapshot(userId, month);
-      if (amount > snap.leftover + 0.01) {
-        throw new BadRequestException(
-          `ניתן להקצות עד ₪${Math.round(snap.leftover).toLocaleString("he-IL")} מהנותר של ${month}`,
-        );
-      }
-    }
-
-    const next = Number(existing.currentAmount) + amount;
     const bookedAt = bookedAtForMonth(month);
     const merchant = goalMerchant(id);
     const account = await this.ensureCheckingAccount(userId);
+    const execution = await this.prisma.$transaction(
+      async (db) => {
+        await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+        const existing = await db.goal.findFirst({ where: { id, userId } });
+        if (!existing) throw new NotFoundException("יעד לא נמצא");
+        const remaining = Math.max(
+          0,
+          Number(existing.targetAmount) - Number(existing.currentAmount),
+        );
+        if (amount > remaining + 0.01) {
+          throw new BadRequestException(
+            `ניתן להקצות עד ₪${Math.round(remaining).toLocaleString("he-IL")} להשלמת היעד`,
+          );
+        }
+        if (isPastOrCurrent) {
+          this.monthFacts.invalidateUser(userId);
+          const snap = await this.budget.snapshot(userId, month);
+          if (amount > snap.leftover + 0.01) {
+            throw new BadRequestException(
+              `ניתן להקצות עד ₪${Math.round(Math.max(0, snap.leftover)).toLocaleString("he-IL")} מהנותר של ${month}`,
+            );
+          }
+        }
 
-    const [, tx] = await this.prisma.$transaction([
-      this.prisma.goal.update({
-        where: { id },
-        data: { currentAmount: new Prisma.Decimal(next) },
-      }),
-      this.prisma.transaction.create({
-        data: {
-          userId,
-          accountId: account.id,
-          direction: "EXPENSE",
-          amount: new Prisma.Decimal(amount),
-          categoryKey: "goal_funding",
-          description: `הקצאה ליעד: ${existing.title}`,
-          merchantNorm: merchant,
-          bookedAt,
-          sourceType: "USER_INPUT",
-          userConfirmed: true,
-        },
-      }),
-      this.prisma.financialAccount.update({
-        where: { id: account.id },
-        data: {
-          currentBalance: { increment: balanceDelta("EXPENSE", amount) },
-        },
-      }),
-      this.prisma.auditEvent.create({
-        data: {
-          userId,
-          action: "GOAL_SURPLUS_APPLIED",
-          meta: JSON.stringify({
-            goalId: id,
-            amount,
-            month,
-            title: existing.title,
-            future: isFuture,
-          }),
-        },
-      }),
-    ]);
+        const next = Number(existing.currentAmount) + amount;
+        await db.goal.update({
+          where: { id },
+          data: { currentAmount: new Prisma.Decimal(next) },
+        });
+        const tx = await db.transaction.create({
+          data: {
+            userId,
+            accountId: account.id,
+            direction: "EXPENSE",
+            amount: new Prisma.Decimal(amount),
+            categoryKey: "goal_funding",
+            description: `הקצאה ליעד: ${existing.title}`,
+            merchantNorm: merchant,
+            bookedAt,
+            sourceType: options.sourceType ?? SourceType.USER_INPUT,
+            userConfirmed: true,
+          },
+        });
+        await db.financialAccount.update({
+          where: { id: account.id },
+          data: {
+            currentBalance: { increment: balanceDelta("EXPENSE", amount) },
+          },
+        });
+        await db.auditEvent.create({
+          data: {
+            userId,
+            action: options.auditAction ?? "GOAL_SURPLUS_APPLIED",
+            meta: JSON.stringify({
+              goalId: id,
+              amount,
+              month,
+              title: existing.title,
+              future: isFuture,
+            }),
+          },
+        });
+        if (options.proposalId) {
+          await db.roeyActionProposal.update({
+            where: { id: options.proposalId },
+            data: {
+              status: "EXECUTED",
+              executedAt: new Date(),
+              resultJson: JSON.stringify({
+                goalId: id,
+                transactionId: tx.id,
+                type: "ALLOCATE_SURPLUS_TO_GOAL",
+              }),
+            },
+          });
+        }
+        return { tx, title: existing.title };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 10_000,
+        timeout: 15_000,
+      },
+    );
 
     const updated = await this.prisma.goal.findUniqueOrThrow({ where: { id } });
     const monthLabel = bookedAt.toLocaleDateString("he-IL", {
@@ -534,8 +574,8 @@ export class GoalsService {
       goal: updated,
       appliedAmount: amount,
       month,
-      transactionId: tx.id,
-      messageHe: `הוקצו ₪${amount.toLocaleString("he-IL")} ליעד «${existing.title}» ונרשמה תנועה ב־${monthLabel}`,
+      transactionId: execution.tx.id,
+      messageHe: `הוקצו ₪${amount.toLocaleString("he-IL")} ליעד «${execution.title}» ונרשמה תנועה ב־${monthLabel}`,
     };
   }
 

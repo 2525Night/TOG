@@ -3,8 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { EconomicRole, Prisma, TxDirection } from "@prisma/client";
+import {
+  EconomicRole,
+  Prisma,
+  SourceType,
+  TxDirection,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { cashSignedDelta } from "../accounts/checking-balance";
 import { MonthFactsService } from "../month-facts/month-facts.service";
 import {
   CreateTransactionDto,
@@ -12,18 +18,13 @@ import {
 } from "./transactions.dto";
 
 type DbClient = Prisma.TransactionClient | PrismaService;
+type TransactionWriteOptions = {
+  sourceType?: SourceType;
+  auditAction?: string;
+  proposalId?: string;
+};
 
-function balanceSignedDelta(
-  direction: TxDirection,
-  amount: number,
-  economicRole: EconomicRole | string,
-): number {
-  // Card purchases do not move bank cash until settlement.
-  if (economicRole === "CARD_PURCHASE") return 0;
-  if (direction === "INCOME") return amount;
-  if (direction === "EXPENSE") return -amount;
-  return 0;
-}
+const balanceSignedDelta = cashSignedDelta;
 
 @Injectable()
 export class TransactionsService {
@@ -242,7 +243,12 @@ export class TransactionsService {
     };
   }
 
-  async create(userId: string, dto: CreateTransactionDto) {
+  async create(
+    userId: string,
+    dto: CreateTransactionDto,
+    options: TransactionWriteOptions = {},
+  ) {
+    const sourceType = options.sourceType ?? SourceType.USER_INPUT;
     const economicRole = dto.economicRole ?? EconomicRole.STANDARD;
     await this.assertLinks(userId, {
       loanId: dto.loanId,
@@ -308,7 +314,7 @@ export class TransactionsService {
           categoryKey: dto.categoryKey,
           description: dto.description || null,
           bookedAt: new Date(dto.bookedAt),
-          sourceType: "USER_INPUT",
+          sourceType,
           userConfirmed: true,
           economicRole,
           loanId: dto.loanId || null,
@@ -342,14 +348,28 @@ export class TransactionsService {
       await db.auditEvent.create({
         data: {
           userId,
-          action: "TRANSACTION_CREATED",
+          action: options.auditAction ?? "TRANSACTION_CREATED",
           meta: JSON.stringify({
             transactionId: created.id,
-            sourceType: "USER_INPUT",
+            sourceType,
             economicRole,
           }),
         },
       });
+
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              transactionId: created.id,
+              type: "ADD_TRANSACTION",
+            }),
+          },
+        });
+      }
 
       return created;
     });
@@ -358,7 +378,12 @@ export class TransactionsService {
     return tx;
   }
 
-  async update(userId: string, id: string, dto: UpdateTransactionDto) {
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+    options: TransactionWriteOptions = {},
+  ) {
     const existing = await this.prisma.transaction.findFirst({
       where: { id, userId },
     });
@@ -456,6 +481,9 @@ export class TransactionsService {
           creditCardId: nextCardId,
           installmentPlanId: nextPlanId,
           userConfirmed: true,
+          ...(options.sourceType
+            ? { sourceType: options.sourceType }
+            : {}),
         },
       });
 
@@ -486,6 +514,33 @@ export class TransactionsService {
         creditCardId: nextCardId,
         sign: 1,
       });
+
+      if (options.auditAction) {
+        await db.auditEvent.create({
+          data: {
+            userId,
+            action: options.auditAction,
+            meta: JSON.stringify({
+              transactionId: id,
+              sourceType: options.sourceType ?? existing.sourceType,
+            }),
+          },
+        });
+      }
+
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              transactionId: row.id,
+              type: "CHANGE_TRANSACTION_CATEGORY",
+            }),
+          },
+        });
+      }
 
       return row;
     });

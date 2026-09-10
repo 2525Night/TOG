@@ -58,9 +58,10 @@ export class CompleteOnboardingDto {
   @MinLength(1)
   accountName!: string;
 
-  /** May be negative (overdraft / crisis starting point). */
+  /** Ignored. Checking now follows cash-moving transactions. */
+  @IsOptional()
   @IsNumber()
-  startingBalance!: number;
+  startingBalance?: number;
 
   @IsNumber()
   @Min(0)

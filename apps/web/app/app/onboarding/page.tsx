@@ -52,12 +52,8 @@ const defaultExpenses: ExpenseRow[] = [
 
 const stepMeta = [
   {
-    title: "כמה יש בחשבון?",
-    blurb: "רק המספר שאתם רואים עכשיו בעו״ש. מינוס בסדר — ככה מתחילים לפעמים.",
-  },
-  {
     title: "מה נכנס בחודש?",
-    blurb: "משכורת או הכנסה נטו אחרי מסים. אפשר לעגל.",
+    blurb: "משכורת או הכנסה נטו אחרי מסים. העו״ש יחושב לפי התנועות, לא כמספר נפרד.",
   },
   {
     title: "יש כרטיס אשראי?",
@@ -77,7 +73,6 @@ export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [accountName] = useState("העו״ש שלי");
-  const [startingBalance, setStartingBalance] = useState("");
   const [monthlyIncomeNet, setMonthlyIncomeNet] = useState("");
   const [wantCards, setWantCards] = useState(false);
   const [cards, setCards] = useState<CardRow[]>([
@@ -90,7 +85,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   const steps = useMemo(
-    () => ["חשבון", "הכנסה", "כרטיסים", "קבועים", "כרית"],
+    () => ["הכנסה", "כרטיסים", "קבועים", "כרית"],
     [],
   );
 
@@ -152,7 +147,7 @@ export default function OnboardingPage() {
       setExpenses((prev) =>
         prev.map((row) => ({ ...row, creditCardIndex: null })),
       );
-      setStep(3);
+      setStep(2);
       return;
     }
     const valid = cards.filter((c) => c.name.trim().length > 0);
@@ -160,7 +155,7 @@ export default function OnboardingPage() {
       setError("הוסיפו שם לכרטיס אחד לפחות — או בחרו «לא / אחר כך»");
       return;
     }
-    setStep(3);
+    setStep(2);
   }
 
   function goToCushion() {
@@ -170,7 +165,7 @@ export default function OnboardingPage() {
       setError("מלאו לפחות סכום אחד של הוצאה קבועה — זה עוזר לבנות תמונה");
       return;
     }
-    setStep(4);
+    setStep(3);
   }
 
   async function finish(opts?: { skipCushion?: boolean }) {
@@ -241,7 +236,6 @@ export default function OnboardingPage() {
       const skip = opts?.skipCushion || !wantCushion;
       const body: Record<string, unknown> = {
         accountName,
-        startingBalance: Number(startingBalance) || 0,
         monthlyIncomeNet: Number(monthlyIncomeNet) || 0,
         fixedExpenses,
       };
@@ -303,30 +297,6 @@ export default function OnboardingPage() {
         {step === 0 && (
           <>
             <label className="field">
-              <span>כמה יש בעו״ש עכשיו?</span>
-              <input
-                type="number"
-                step="1"
-                inputMode="decimal"
-                value={startingBalance}
-                onChange={(e) => setStartingBalance(e.target.value)}
-                placeholder="למשל 4,500 או ‎-800"
-                required
-                autoFocus
-              />
-              <span className="field-hint">
-                אפשר גם מספר שלילי אם העו״ש במינוס — זה בסדר גמור.
-              </span>
-            </label>
-            <button className="btn" type="button" onClick={() => setStep(1)}>
-              המשך
-            </button>
-          </>
-        )}
-
-        {step === 1 && (
-          <>
-            <label className="field">
               <span>כמה נכנס בחודש (נטו)</span>
               <input
                 type="number"
@@ -340,25 +310,32 @@ export default function OnboardingPage() {
                 autoFocus
               />
               <span className="field-hint">
-                אחרי מסים וניכויים — מה שבאמת מגיע אליכם.
+                אחרי מסים וניכויים. יתרת העו״ש תיבנה מהתנועות האלה, בלי מספר נפרד.
               </span>
             </label>
-            <div className="onboard-nav">
-              <button
-                className="btn secondary"
-                type="button"
-                onClick={() => setStep(0)}
-              >
-                חזרה
-              </button>
-              <button className="btn" type="button" onClick={() => setStep(2)}>
-                המשך
-              </button>
-            </div>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                if (!(Number(monthlyIncomeNet) > 0)) {
+                  setError("מלאו את ההכנסה החודשית כדי לבנות את העו״ש מהתנועות");
+                  return;
+                }
+                setError(null);
+                setStep(1);
+              }}
+            >
+              המשך
+            </button>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
           </>
         )}
 
-        {step === 2 && (
+        {step === 1 && (
           <>
             <fieldset className="onboard-choice">
               <legend>יש כרטיס אשראי?</legend>
@@ -478,7 +455,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setStep(1);
+                  setStep(0);
                 }}
               >
                 חזרה
@@ -503,7 +480,7 @@ export default function OnboardingPage() {
           </>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <>
             {expenses.map((row, index) => (
               <div className="onboard-expense-block" key={row.categoryKey + index}>
@@ -563,7 +540,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setStep(2);
+                  setStep(1);
                 }}
               >
                 חזרה
@@ -575,15 +552,13 @@ export default function OnboardingPage() {
           </>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <>
             <div className="onboard-summary" aria-label="סיכום קצר">
               <span>
-                בחשבון <strong>{startingBalance || "0"} ₪</strong>
-              </span>
-              <span>
                 נכנס בחודש <strong>{monthlyIncomeNet || "0"} ₪</strong>
               </span>
+              <span>העו״ש יחושב לפי התנועות</span>
               {namedCards.length > 0 && (
                 <span>
                   כרטיסים{" "}
@@ -651,7 +626,7 @@ export default function OnboardingPage() {
               <button
                 className="btn secondary"
                 type="button"
-                onClick={() => setStep(3)}
+                onClick={() => setStep(2)}
               >
                 חזרה
               </button>

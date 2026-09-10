@@ -9,5 +9,6 @@ import { MonthFactsModule } from "../month-facts/month-facts.module";
   imports: [IntelligenceModule, BudgetModule, MonthFactsModule],
   providers: [DashboardService],
   controllers: [DashboardController],
+  exports: [DashboardService],
 })
 export class DashboardModule {}

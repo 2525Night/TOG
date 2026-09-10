@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, SourceType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { categoryLabelHe, categoryNature } from "./nature";
 import { MonthFactsService } from "../month-facts/month-facts.service";
@@ -82,6 +82,11 @@ export class BudgetService {
       payVia?: "ACCOUNT" | "CREDIT_CARD";
       creditCardId?: string | null;
     },
+    options: {
+      sourceType?: SourceType;
+      auditAction?: string;
+      proposalId?: string;
+    } = {},
   ) {
     const payVia = body.payVia === "CREDIT_CARD" ? "CREDIT_CARD" : "ACCOUNT";
     let creditCardId: string | null = null;
@@ -96,25 +101,53 @@ export class BudgetService {
       creditCardId = card.id;
     }
 
-    return this.prisma.budgetCommitment.create({
-      data: {
-        userId,
-        titleHe: body.titleHe,
-        categoryKey: body.categoryKey,
-        merchantNorm: body.merchantNorm || null,
-        nature: body.nature || "FIXED",
-        expectedAmount: new Prisma.Decimal(body.expectedAmount),
-        cadence: body.cadence || "MONTHLY",
-        payVia,
-        creditCardId,
-        anchorDay: body.anchorDay ?? null,
-        startMonth: body.startMonth ?? null,
-        endMonth: body.endMonth ?? null,
-        untilGoal: body.untilGoal ?? false,
-        sourceType: "USER_INPUT",
-        userConfirmed: true,
-        active: true,
-      },
+    return this.prisma.$transaction(async (db) => {
+      const created = await db.budgetCommitment.create({
+        data: {
+          userId,
+          titleHe: body.titleHe,
+          categoryKey: body.categoryKey,
+          merchantNorm: body.merchantNorm || null,
+          nature: body.nature || "FIXED",
+          expectedAmount: new Prisma.Decimal(body.expectedAmount),
+          cadence: body.cadence || "MONTHLY",
+          payVia,
+          creditCardId,
+          anchorDay: body.anchorDay ?? null,
+          startMonth: body.startMonth ?? null,
+          endMonth: body.endMonth ?? null,
+          untilGoal: body.untilGoal ?? false,
+          sourceType: options.sourceType ?? SourceType.USER_INPUT,
+          userConfirmed: true,
+          active: true,
+        },
+      });
+      if (options.auditAction) {
+        await db.auditEvent.create({
+          data: {
+            userId,
+            action: options.auditAction,
+            meta: JSON.stringify({
+              commitmentId: created.id,
+              sourceType: created.sourceType,
+            }),
+          },
+        });
+      }
+      if (options.proposalId) {
+        await db.roeyActionProposal.update({
+          where: { id: options.proposalId },
+          data: {
+            status: "EXECUTED",
+            executedAt: new Date(),
+            resultJson: JSON.stringify({
+              commitmentId: created.id,
+              type: "CREATE_COMMITMENT",
+            }),
+          },
+        });
+      }
+      return created;
     });
   }
 

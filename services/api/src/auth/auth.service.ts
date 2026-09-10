@@ -83,12 +83,23 @@ export class AuthService implements OnModuleInit {
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
+      where: { email: dto.email.trim().toLowerCase() },
     });
     if (!user) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
-    const ok = await bcrypt.compare(dto.password ?? "", user.passwordHash);
+    const password = dto.password ?? "";
+    const normalizedPassword = password
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+      .trim();
+    const candidates = [...new Set([password, normalizedPassword])];
+    const ok = (
+      await Promise.all(
+        candidates.map((candidate) =>
+          bcrypt.compare(candidate, user.passwordHash),
+        ),
+      )
+    ).some(Boolean);
     if (!ok) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
@@ -128,20 +139,19 @@ export class AuthService implements OnModuleInit {
       return { ok: true, alreadyCompleted: true };
     }
 
+    const incomeNet = dto.monthlyIncomeNet > 0 ? dto.monthlyIncomeNet : 0;
     const account = await this.prisma.financialAccount.create({
       data: {
         userId,
         name: dto.accountName,
         kind: "BANK",
-        currentBalance: new Prisma.Decimal(dto.startingBalance),
+        currentBalance: new Prisma.Decimal(incomeNet),
         sourceType: "USER_INPUT",
         userConfirmed: true,
       },
     });
 
-    // Optional estimated income as a cashflow row for this month.
-    // Balance stays at startingBalance (יתרה נוכחית בעו״ש) — do not double-count.
-    if (dto.monthlyIncomeNet > 0) {
+    if (incomeNet > 0) {
       const bookedAt = new Date();
       bookedAt.setDate(1);
       await this.prisma.transaction.create({
@@ -149,7 +159,7 @@ export class AuthService implements OnModuleInit {
           userId,
           accountId: account.id,
           direction: "INCOME",
-          amount: new Prisma.Decimal(dto.monthlyIncomeNet),
+          amount: new Prisma.Decimal(incomeNet),
           categoryKey: "salary",
           description: "הכנסה חודשית נטו (הקמה)",
           bookedAt,
