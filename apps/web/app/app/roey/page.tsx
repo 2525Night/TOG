@@ -545,7 +545,7 @@ function RoeyPageInner() {
   }
 
   return (
-    <div className="roey-page">
+    <div className={`roey-page${tab === "CHAT" ? " roey-page--chat" : ""}`}>
       <PageHeader
         kicker="המלווה הפיננסי שלך"
         title="Roey"

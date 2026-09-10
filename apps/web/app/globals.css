@@ -6642,6 +6642,7 @@ button.linkish:disabled {
 .roey-welcome {
   display: grid;
   flex: 1 1 auto;
+  min-height: 0;
   justify-items: center;
   align-content: center;
   gap: 0.65rem;
@@ -6680,6 +6681,7 @@ button.linkish:disabled {
 .roey-messages {
   display: grid;
   flex: 1 1 auto;
+  min-height: 0;
   align-content: start;
   gap: 0.75rem;
   max-height: min(620px, calc(100dvh - 315px));
@@ -6852,7 +6854,8 @@ button.linkish:disabled {
 
 .roey-composer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.65rem;
   padding: 0.8rem;
   background: rgba(255, 255, 255, 0.76);
@@ -7353,12 +7356,72 @@ button.linkish:disabled {
     position: static;
   }
 
+  .app-main:has(.roey-page--chat) {
+    height: var(--app-vvh, 100dvh);
+    max-height: var(--app-vvh, 100dvh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app-main:has(.roey-page--chat) > .container {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0.55rem;
+  }
+
+  .roey-page--chat {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+
+  .roey-page--chat .roey-workspace {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .roey-page--chat .roey-chat {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    height: auto;
+  }
+
+  .roey-page--chat .roey-welcome,
+  .roey-page--chat .roey-messages,
+  .roey-page--chat .roey-connect-callout {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .roey-page--chat .roey-composer {
+    position: relative;
+    z-index: 3;
+    padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px) + var(--keyboard-inset, 0px));
+  }
+
+  .roey-page--chat .roey-forecast {
+    display: none;
+  }
+
   .roey-chat {
-    min-height: calc(100dvh - 300px);
+    min-height: 0;
   }
 
   .roey-messages {
-    max-height: calc(100dvh - 365px);
+    max-height: none;
   }
 }
 
@@ -7463,13 +7526,25 @@ button.linkish:disabled {
     padding-inline: 0.45rem;
   }
 
+  .roey-page--chat .mt-page-head {
+    padding: 0.7rem 0.85rem;
+  }
+
+  .roey-page--chat .app-page-header-sub {
+    display: none;
+  }
+
+  .roey-page--chat .roey-journey p {
+    display: none;
+  }
+
   .roey-chat {
-    min-height: calc(100dvh - 270px);
+    min-height: 0;
     border-radius: 18px;
   }
 
   .roey-messages {
-    max-height: calc(100dvh - 340px);
+    max-height: none;
     padding: 0.75rem;
   }
 
@@ -7516,11 +7591,13 @@ button.linkish:disabled {
   }
 
   .roey-composer {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
   }
 
   .roey-composer .btn {
-    width: 100%;
+    width: auto;
+    min-width: 5.5rem;
   }
 
   .roey-forecast-points {
