@@ -19,12 +19,12 @@ export class AccountsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser) {
-    return this.accounts.list(user.userId);
+    return this.accounts.list(user.ledgerUserId);
   }
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAccountDto) {
-    return this.accounts.create(user.userId, dto);
+    return this.accounts.create(user.ledgerUserId, dto);
   }
 
   @Patch(":id")
@@ -33,6 +33,6 @@ export class AccountsController {
     @Param("id") id: string,
     @Body() dto: UpdateAccountDto,
   ) {
-    return this.accounts.update(user.userId, id, dto);
+    return this.accounts.update(user.ledgerUserId, id, dto);
   }
 }

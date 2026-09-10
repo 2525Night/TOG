@@ -24,9 +24,9 @@ export class DebtsOverviewController {
     @Query("month") month?: string,
   ) {
     const [loans, cards, facts] = await Promise.all([
-      this.loans.list(user.userId, month),
-      this.cards.list(user.userId, month),
-      this.monthFacts.forMonth(user.userId, month),
+      this.loans.list(user.ledgerUserId, month),
+      this.cards.list(user.ledgerUserId, month),
+      this.monthFacts.forMonth(user.ledgerUserId, month),
     ]);
 
     const loansThisMonth = loans.totals.monthlyPayment;

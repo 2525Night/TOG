@@ -135,17 +135,15 @@ export default function LoginPage() {
             />
           </label>
           <label className="field">
-            <span className="field-label-row">
-              סיסמה
-              <span className="auth-chip">אופציונלי כרגע</span>
-            </span>
+            <span>סיסמה</span>
             <div className="field-password">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                placeholder="השאירו ריק אם אין"
+                required
+                minLength={1}
                 enterKeyHint="go"
                 disabled={!!gateHref || restoring}
               />
@@ -161,7 +159,6 @@ export default function LoginPage() {
                 <EyeIcon open={showPassword} />
               </button>
             </div>
-            <span className="field-hint">אם כבר הגדרתם סיסמה — הזינו אותה.</span>
           </label>
           {error && (
             <p className="form-error" role="alert">

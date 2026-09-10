@@ -24,7 +24,25 @@ export class LoginDto {
   @IsEmail()
   email!: string;
 
-  @IsOptional()
   @IsString()
-  password?: string;
+  @MinLength(1, { message: "נא להזין סיסמה" })
+  password!: string;
+}
+
+export class ForgotPasswordDto {
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @IsString()
+  @MinLength(10)
+  token!: string;
+
+  @IsString()
+  @MinLength(8, { message: "הסיסמה חייבת להכיל לפחות 8 תווים" })
+  newPassword!: string;
 }

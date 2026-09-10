@@ -13,6 +13,7 @@ const links = [
   { href: "/app/debts", label: "אשראי והלוואות", ico: "◇" },
   { href: "/app/goals", label: "יעדים", ico: "○" },
   { href: "/app/roey", label: "Roey", ico: "✦" },
+  { href: "/app/settings", label: "הגדרות", ico: "⚙" },
 ];
 
 type AppSidebarProps = {

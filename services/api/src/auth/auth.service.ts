@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -8,7 +9,12 @@ import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
-import { LoginDto, RegisterDto } from "./auth.dto";
+import {
+  ForgotPasswordDto,
+  LoginDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from "./auth.dto";
 import { CompleteOnboardingDto } from "./onboarding.dto";
 import { Prisma } from "@prisma/client";
 
@@ -88,11 +94,13 @@ export class AuthService implements OnModuleInit {
     if (!user) {
       throw new UnauthorizedException("אימייל או סיסמה שגויים");
     }
-    const password = dto.password ?? "";
+    const password = dto.password;
     const normalizedPassword = password
       .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
       .trim();
-    const candidates = [...new Set([password, normalizedPassword])];
+    const candidates = [...new Set([password, normalizedPassword])].filter(
+      Boolean,
+    );
     const ok = (
       await Promise.all(
         candidates.map((candidate) =>
@@ -126,10 +134,42 @@ export class AuthService implements OnModuleInit {
         jurisdiction: true,
         onboardingCompleted: true,
         createdAt: true,
+        householdOwnerId: true,
       },
     });
     if (!user) throw new UnauthorizedException();
-    return user;
+
+    let household: {
+      linked: boolean;
+      role: "owner" | "partner" | "solo";
+      labelHe?: string;
+    } = { linked: false, role: "solo" };
+
+    if (user.householdOwnerId) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: user.householdOwnerId },
+        select: { displayName: true, email: true },
+      });
+      household = {
+        linked: true,
+        role: "partner",
+        labelHe: owner?.displayName || owner?.email || "משק בית משותף",
+      };
+    } else {
+      const partners = await this.prisma.user.count({
+        where: { householdOwnerId: userId },
+      });
+      if (partners > 0) {
+        household = {
+          linked: true,
+          role: "owner",
+          labelHe: "שותפים במסע",
+        };
+      }
+    }
+
+    const { householdOwnerId: _omit, ...rest } = user;
+    return { ...rest, household };
   }
 
   async completeOnboarding(userId: string, dto: CompleteOnboardingDto) {
@@ -243,6 +283,74 @@ export class AuthService implements OnModuleInit {
     });
 
     return { ok: true, accountId: account.id };
+  }
+
+  /**
+   * Starts a password reset. Always returns a neutral success payload
+   * (no email enumeration). In local/dev we also return a one-time link
+   * so the flow can be tested without a mailer.
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    const base = {
+      ok: true as const,
+      message:
+        "אם קיים חשבון עם האימייל הזה — אפשר להמשיך לאיפוס הסיסמה עכשיו.",
+    };
+    if (!user) return base;
+
+    const resetToken = this.jwt.sign(
+      { sub: user.id, email: user.email, purpose: "password-reset" },
+      { expiresIn: "1h" },
+    );
+    await this.prisma.auditEvent.create({
+      data: { userId: user.id, action: "USER_PASSWORD_RESET_REQUESTED" },
+    });
+
+    const exposeLink =
+      this.config.get<string>("AUTH_EXPOSE_RESET_LINK") === "1" ||
+      process.env.NODE_ENV !== "production";
+
+    if (!exposeLink) {
+      return {
+        ...base,
+        message:
+          "אם קיים חשבון עם האימייל הזה — בדקו את תיבת הדואר להמשך האיפוס.",
+      };
+    }
+
+    return {
+      ...base,
+      resetToken,
+      resetPath: `/reset-password?token=${encodeURIComponent(resetToken)}`,
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    let payload: { sub?: string; purpose?: string };
+    try {
+      payload = this.jwt.verify(dto.token) as {
+        sub?: string;
+        purpose?: string;
+      };
+    } catch {
+      throw new BadRequestException(
+        "קישור האיפוס אינו תקף או שפג תוקפו — בקשו קישור חדש",
+      );
+    }
+    if (payload.purpose !== "password-reset" || !payload.sub) {
+      throw new BadRequestException("קישור איפוס לא תקין");
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const user = await this.prisma.user.update({
+      where: { id: payload.sub },
+      data: { passwordHash },
+    });
+    await this.prisma.auditEvent.create({
+      data: { userId: user.id, action: "USER_PASSWORD_RESET_COMPLETED" },
+    });
+    return { ok: true, message: "הסיסמה עודכנה — אפשר להתחבר" };
   }
 
   private tokenResponse(

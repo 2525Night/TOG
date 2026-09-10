@@ -21,12 +21,12 @@ export class BudgetController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.budget.snapshot(user.userId, month);
+    return this.budget.snapshot(user.ledgerUserId, month);
   }
 
   @Get("commitments")
   list(@CurrentUser() user: AuthUser) {
-    return this.budget.listCommitments(user.userId);
+    return this.budget.listCommitments(user.ledgerUserId);
   }
 
   @Post("commitments")
@@ -46,12 +46,12 @@ export class BudgetController {
       startMonth?: string;
     },
   ) {
-    return this.budget.createCommitment(user.userId, body);
+    return this.budget.createCommitment(user.ledgerUserId, body);
   }
 
   @Get("suggestions")
   suggestions(@CurrentUser() user: AuthUser) {
-    return this.budget.suggestions(user.userId);
+    return this.budget.suggestions(user.ledgerUserId);
   }
 
   @Post("commitments/from-suggestion")
@@ -65,7 +65,7 @@ export class BudgetController {
       expectedAmount: number;
     },
   ) {
-    return this.budget.confirmSuggestion(user.userId, body);
+    return this.budget.confirmSuggestion(user.ledgerUserId, body);
   }
 
   @Post("settings/flexible-cap")
@@ -73,11 +73,11 @@ export class BudgetController {
     @CurrentUser() user: AuthUser,
     @Body() body: { flexibleCap: number | null },
   ) {
-    return this.budget.setFlexibleCap(user.userId, body.flexibleCap ?? null);
+    return this.budget.setFlexibleCap(user.ledgerUserId, body.flexibleCap ?? null);
   }
 
   @Post("commitments/:id/deactivate")
   deactivate(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.budget.deactivateCommitment(user.userId, id);
+    return this.budget.deactivateCommitment(user.ledgerUserId, id);
   }
 }

@@ -13,6 +13,6 @@ export class DashboardController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.dashboard.summary(user.userId, month);
+    return this.dashboard.summary(user.ledgerUserId, month);
   }
 }

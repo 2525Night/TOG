@@ -184,10 +184,25 @@ function DashboardInner() {
   const [goalExtras, setGoalExtras] = useState<
     Record<string, { etaMonth: string | null; pace: string | null }>
   >({});
+  const [householdLinked, setHouseholdLinked] = useState(false);
 
   async function load() {
     const s = await api<Summary>(`/dashboard/summary?month=${month}`);
     setData(s);
+    try {
+      const hs = await api<{ linked?: boolean; role?: string }>(
+        "/household/status",
+      );
+      setHouseholdLinked(
+        Boolean(
+          hs.linked ||
+            hs.role === "partner" ||
+            (hs.role === "owner" && (hs as { partners?: unknown[] }).partners?.length),
+        ),
+      );
+    } catch {
+      setHouseholdLinked(false);
+    }
     try {
       const enriched = await api<
         Array<{
@@ -350,7 +365,7 @@ function DashboardInner() {
         extra={
           leftoverBar != null && !sparseSetup ? (
             <span>
-              נותר החודש{" "}
+              תקציב · נותר החודש{" "}
               <strong className={leftoverBar >= 0 ? "tx-in" : "tx-out"}>
                 {formatIls(leftoverBar)}
               </strong>
@@ -393,6 +408,18 @@ function DashboardInner() {
           (facts?.flows.expense ?? data.expenseMtd) > 0;
         const showPartialTrust =
           checkingMissing || zeroCheckingWithReserve || sparseFlows;
+        const year = Number(month.slice(0, 4));
+        const monthNum = Number(month.slice(5, 7));
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        const now = new Date();
+        const isFocusCurrent =
+          now.getFullYear() === year && now.getMonth() + 1 === monthNum;
+        const dayOfMonth = isFocusCurrent ? now.getDate() : 1;
+        const daysLeft = Math.max(1, daysInMonth - dayOfMonth + 1);
+        const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
+        const monthPool =
+          leftoverBar != null && Number.isFinite(leftoverBar) ? leftoverBar : z;
+        const weeklyRemain = Math.round((monthPool / weeksLeft) * 100) / 100;
         return (
           <>
             {showPartialTrust && (
@@ -468,14 +495,37 @@ function DashboardInner() {
                       : "תזרים יציב"}
               </span>
             </div>
+            <section
+              className="card"
+              aria-label="נשאר השבוע"
+              data-testid="weekly-remain"
+              style={{ marginTop: "0.35rem" }}
+            >
+              <span className="debts-totals-eyebrow">נשאר השבוע</span>
+              <div
+                className={`clarity-answer-value${weeklyRemain < 0 ? " tx-out" : ""}`}
+                style={{ fontSize: "1.55rem" }}
+              >
+                {formatIls(weeklyRemain)}
+              </div>
+              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                חלוקה רגועה של{" "}
+                {leftoverBar != null ? "נותר החודש" : "הזמין בפועל"} ל־
+                {weeksLeft} שבועות שנותרו ב־{labelMonthHe(month)}
+                {weeklyRemain >= 0
+                  ? " — יש לכם כיוון ברור לשבוע"
+                  : " — בלי שיפוט, רק כיוון"}
+                {householdLinked ? " · גם לשניים" : ""}.
+              </p>
+            </section>
             <div className="clarity-actions">
               {firstAttention && !sparseSetup ? (
                 <Link className="btn" href={firstAttention.href}>
                   {firstAttention.ctaHe || "לטפל עכשיו"}
                 </Link>
               ) : (
-                <Link className="btn" href={`/app/money?month=${month}`}>
-                  {sparseSetup ? "הוסיפו תנועה ראשונה" : "הוסף תנועה"}
+                <Link className="btn" href={`/app/money?month=${month}&add=expense`}>
+                  {sparseSetup ? "הוסיפו תנועה ראשונה" : "הוצאה מהירה"}
                 </Link>
               )}
               <button
@@ -554,6 +604,9 @@ function DashboardInner() {
                   },
                 ]
               : []),
+          ...(householdLinked
+            ? [{ label: "שותפים במסע", value: "ביחד" }]
+            : []),
         ]}
       />
 

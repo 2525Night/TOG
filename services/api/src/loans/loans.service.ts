@@ -37,7 +37,16 @@ export class LoansService {
       orderBy: { updatedAt: "desc" },
     });
 
-    const items = rows.map((r) => this.serialize(r));
+    const staleClosed = rows.filter((r) => !(Number(r.principalBalance) > 0.001));
+    if (staleClosed.length > 0) {
+      await this.prisma.loan.updateMany({
+        where: { userId, id: { in: staleClosed.map((r) => r.id) } },
+        data: { active: false, nextDueDate: null },
+      });
+      this.monthFacts.invalidateUser(userId);
+    }
+    const openRows = rows.filter((r) => Number(r.principalBalance) > 0.001);
+    const items = openRows.map((r) => this.serialize(r));
     const overdraft =
       facts.checkingBalanceNow < 0
         ? {
@@ -65,10 +74,10 @@ export class LoansService {
           }
         : null;
 
-    const loanOnly = items;
-    const openLoans = loanOnly.filter((x) => x.principalBalance > 0.001);
+    /** Paid-off loans are deactivated above and excluded from overview. */
+    const openLoans = items;
     const principalTotal = round2(
-      loanOnly.reduce((s, x) => s + x.principalBalance, 0),
+      openLoans.reduce((s, x) => s + x.principalBalance, 0),
     );
     const monthlyTotal = round2(
       openLoans.reduce((s, x) => s + x.monthlyPayment, 0),
@@ -93,19 +102,20 @@ export class LoansService {
 
     return {
       month: focus,
-      items: overdraft ? [overdraft, ...loanOnly] : loanOnly,
-      loans: loanOnly,
+      items: overdraft ? [overdraft, ...openLoans] : openLoans,
+      loans: openLoans,
       overdraft,
       totals: {
         principal: principalTotal,
         original: round2(
-          loanOnly.reduce((s, x) => s + x.originalAmount, 0),
+          openLoans.reduce((s, x) => s + x.originalAmount, 0),
         ),
         repaid: round2(
-          loanOnly.reduce((s, x) => s + x.repaidAmount, 0),
+          openLoans.reduce((s, x) => s + x.repaidAmount, 0),
         ),
         monthlyPayment: monthlyTotal,
-        activeCount: loanOnly.length,
+        activeCount: openLoans.length,
+        closedCount: staleClosed.length,
         nextPaymentAmount: nextPayments[0]?.monthlyPayment ?? null,
         nextPaymentDate: nextPayments[0]?.nextDueDate ?? null,
       },
@@ -157,8 +167,12 @@ export class LoansService {
         aprPercent: dto.aprPercent ?? null,
         startDate: dto.startDate ? new Date(dto.startDate) : null,
         endDate: dto.endDate ? new Date(dto.endDate) : null,
-        nextDueDate: dto.nextDueDate ? new Date(dto.nextDueDate) : null,
+        nextDueDate:
+          principal > 0.001 && dto.nextDueDate
+            ? new Date(dto.nextDueDate)
+            : null,
         notes: dto.notes?.trim() || null,
+        active: principal > 0.001,
       },
     });
     this.monthFacts.invalidateUser(userId);
@@ -170,6 +184,12 @@ export class LoansService {
       where: { id, userId, active: true },
     });
     if (!existing) throw new NotFoundException("הלוואה לא נמצאה");
+
+    const nextPrincipal =
+      dto.principalBalance != null
+        ? dto.principalBalance
+        : Number(existing.principalBalance);
+    const closed = !(nextPrincipal > 0.001);
 
     const row = await this.prisma.loan.update({
       where: { id },
@@ -204,6 +224,9 @@ export class LoansService {
         ...(dto.notes !== undefined
           ? { notes: dto.notes?.trim() || null }
           : {}),
+        ...(closed
+          ? { active: false, nextDueDate: null }
+          : {}),
       },
     });
     this.monthFacts.invalidateUser(userId);
@@ -230,6 +253,7 @@ export class LoansService {
     });
     let sum = 0;
     for (const r of rows) {
+      if (!(Number(r.principalBalance) > 0.001)) continue;
       sum += loanReserveAmount(r, month);
     }
     return round2(sum);

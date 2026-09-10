@@ -1,12 +1,21 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  (process.env.NODE_ENV === "production"
-    ? "https://moneytail-api.vercel.app"
-    : "http://localhost:3001");
 const TOKEN_KEY = "mt_token";
 const NATIVE_TOKEN_KEY = "moneytail.session.token";
 const SESSION_DB = "moneytail-session";
 const SESSION_STORE = "credentials";
+
+function resolveApiUrl() {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    // Android emulator WebView loading host Next via 10.0.2.2
+    if (host === "10.0.2.2") return "http://10.0.2.2:3001";
+  }
+  return (
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+    (process.env.NODE_ENV === "production"
+      ? "https://moneytail-api.vercel.app"
+      : "http://localhost:3001")
+  );
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -169,10 +178,15 @@ export async function api<T>(
     }
   }
 
-  const res = await fetch(`${API_URL}/api${path}`, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${resolveApiUrl()}/api${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new Error("לא הצלחנו להתחבר לשרת — בדקו את החיבור ונסו שוב");
+  }
 
   if (!res.ok) await parseError(res);
   if (res.status === 204) {
@@ -202,7 +216,7 @@ export async function apiDownload(path: string, filename: string) {
   const token = getToken();
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_URL}/api${path}`, { headers });
+  const res = await fetch(`${resolveApiUrl()}/api${path}`, { headers });
   if (!res.ok) await parseError(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

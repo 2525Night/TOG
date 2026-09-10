@@ -41,15 +41,30 @@ export class RoeyService {
     const row = await this.prisma.roeyAiConnection.findUnique({
       where: { userId },
     });
-    if (!row) return { connected: false as const };
-    return {
-      connected: true as const,
-      provider: row.provider,
-      keyHint: row.keyHint,
-      modelId: row.modelId,
-      status: row.status,
-      lastValidatedAt: row.lastValidatedAt,
-    };
+    if (row) {
+      return {
+        connected: true as const,
+        provider: row.provider,
+        keyHint: row.keyHint,
+        modelId: row.modelId,
+        status: row.status,
+        lastValidatedAt: row.lastValidatedAt,
+        platformManaged: false as const,
+      };
+    }
+    const platform = this.platformCredentials();
+    if (platform) {
+      return {
+        connected: true as const,
+        provider: "PLATFORM",
+        keyHint: "מובנה ב־MoneyTail5",
+        modelId: platform.modelId,
+        status: "CONNECTED",
+        lastValidatedAt: null,
+        platformManaged: true as const,
+      };
+    }
+    return { connected: false as const, platformManaged: false as const };
   }
 
   async connect(
@@ -216,8 +231,8 @@ export class RoeyService {
         "אין לשלוח ל-Roey סיסמה, API key או פרטי גישה",
       );
     }
-    const connection = await this.requireConnection(userId);
-    if (!connection.modelId) {
+    const credentials = await this.resolveApiCredentials(userId);
+    if (!credentials.modelId) {
       throw new BadRequestException("יש לבחור מודל Google AI Studio");
     }
     const memoryEnabled =
@@ -242,8 +257,8 @@ export class RoeyService {
       conversationId: conversation?.id ?? null,
       message: userMessage,
       month: dto.month,
-      apiKey: this.crypto.decrypt(connection.encryptedCredential),
-      modelId: connection.modelId,
+      apiKey: credentials.apiKey,
+      modelId: credentials.modelId,
       history:
       historyRows.reverse().map((message) => ({
         role: message.role === "ASSISTANT" ? "model" : "user",
@@ -305,9 +320,9 @@ export class RoeyService {
                   journey: built.journey,
                   factsUsed: built.factsUsed,
                   forecast: built.forecast,
-                  modelId: connection.modelId,
+                  modelId: credentials.modelId,
                 }),
-                modelId: connection.modelId,
+                modelId: credentials.modelId,
               },
             ],
           });
@@ -321,7 +336,8 @@ export class RoeyService {
               action: "ROEY_RESPONSE_GENERATED",
               meta: JSON.stringify({
                 conversationId: row.id,
-                modelId: connection.modelId,
+                modelId: credentials.modelId,
+                credentialSource: credentials.source,
                 severity: built.risk.severity,
                 confidence: output.confidence,
               }),
@@ -330,7 +346,7 @@ export class RoeyService {
           return row.id;
         })
       : (await this.audit(userId, "ROEY_EPHEMERAL_RESPONSE_GENERATED", {
-          modelId: connection.modelId,
+          modelId: credentials.modelId,
           severity: built.risk.severity,
           confidence: output.confidence,
         }),
@@ -361,7 +377,7 @@ export class RoeyService {
       journey: built.journey,
       factsUsed: built.factsUsed,
       forecast: built.forecast,
-      modelId: connection.modelId,
+      modelId: credentials.modelId,
       agent: {
         runId: turn.runId,
         intent: turn.intent,
@@ -428,6 +444,41 @@ export class RoeyService {
       conversationId,
     });
     return { ok: true };
+  }
+
+  private platformCredentials(): { apiKey: string; modelId: string } | null {
+    const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+    if (!apiKey) return null;
+    return {
+      apiKey,
+      modelId:
+        (process.env.ROEY_DEFAULT_MODEL_ID || "").trim() ||
+        "gemini-2.5-flash",
+    };
+  }
+
+  private async resolveApiCredentials(userId: string): Promise<{
+    apiKey: string;
+    modelId: string;
+    source: "user" | "platform";
+  }> {
+    const row = await this.prisma.roeyAiConnection.findUnique({
+      where: { userId },
+    });
+    if (row?.modelId) {
+      return {
+        apiKey: this.crypto.decrypt(row.encryptedCredential),
+        modelId: row.modelId,
+        source: "user",
+      };
+    }
+    const platform = this.platformCredentials();
+    if (platform) {
+      return { ...platform, source: "platform" };
+    }
+    throw new BadRequestException(
+      "יש לחבר את Roey ל-Google AI Studio תחילה",
+    );
   }
 
   private async requireConnection(userId: string) {

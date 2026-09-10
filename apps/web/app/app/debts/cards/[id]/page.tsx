@@ -52,6 +52,7 @@ type CardDetail = {
   cycleSpend: number;
   upcomingCharge: number;
   nextBillingDate: string | null;
+  billingDay?: number | null;
   installmentCommitment: number;
   monthlyInstallments: number;
   focusMonth?: string;
@@ -113,6 +114,7 @@ function CardDetailInner() {
   const [balance, setBalance] = useState("");
   const [limit, setLimit] = useState("");
   const [billing, setBilling] = useState("");
+  const [billingDay, setBillingDay] = useState("");
   const [planTitle, setPlanTitle] = useState("");
   const [planOriginal, setPlanOriginal] = useState("");
   const [planCount, setPlanCount] = useState("12");
@@ -126,11 +128,27 @@ function CardDetailInner() {
   );
   const [chargeDate, setChargeDate] = useState(defaultBookedDate(month));
   const [chargeInstallments, setChargeInstallments] = useState("1");
+  /** once = קנייה · installments = פריסה · standing = הוראת קבע חודשית בכרטיס */
+  const [chargeMode, setChargeMode] = useState<
+    "once" | "installments" | "standing"
+  >(() => (searchParams.get("standing") === "1" ? "standing" : "once"));
   const [chargeFeedback, setChargeFeedback] = useState<string | null>(null);
+  const [cardStandings, setCardStandings] = useState<
+    Array<{
+      id: string;
+      titleHe: string;
+      expectedAmount: number | string;
+      categoryKey: string;
+      startMonth: string | null;
+      payVia: string;
+      creditCardId: string | null;
+    }>
+  >([]);
   const [pendingConfirm, setPendingConfirm] = useState<
     | { kind: "remove-card" }
     | { kind: "delete-plan"; plan: Plan }
     | { kind: "delete-tx"; tx: CardDetail["transactions"][number] }
+    | { kind: "deactivate-standing"; id: string; titleHe: string }
     | null
   >(null);
 
@@ -143,13 +161,16 @@ function CardDetailInner() {
     [userCats],
   );
 
-  const installmentN = Math.max(
-    1,
-    Math.floor(Number(chargeInstallments) || 1),
-  );
+  const installmentN =
+    chargeMode === "installments"
+      ? Math.max(2, Math.floor(Number(chargeInstallments) || 2))
+      : 1;
   const chargeTotal = Number(chargeAmount);
   const monthlyPreview =
-    Number.isFinite(chargeTotal) && chargeTotal > 0 && installmentN >= 2
+    Number.isFinite(chargeTotal) &&
+    chargeTotal > 0 &&
+    chargeMode === "installments" &&
+    installmentN >= 2
       ? Math.round((chargeTotal / installmentN) * 100) / 100
       : null;
 
@@ -168,21 +189,45 @@ function CardDetailInner() {
     setBalance(String(res.currentBalance));
     setLimit(String(res.creditLimit));
     setBilling(res.nextBillingDate ? res.nextBillingDate.slice(0, 10) : "");
+    setBillingDay(
+      res.billingDay != null && res.billingDay >= 1 ? String(res.billingDay) : "",
+    );
   }
 
   useEffect(() => {
-    if (searchParams.get("charge") === "1") {
+    if (searchParams.get("charge") === "1" || searchParams.get("standing") === "1") {
       setOpenCharge(true);
       setOpenPlan(false);
       setEditing(false);
+      if (searchParams.get("standing") === "1") setChargeMode("standing");
     }
   }, [searchParams]);
+
+  async function loadStandings() {
+    const list = await api<
+      Array<{
+        id: string;
+        titleHe: string;
+        expectedAmount: number | string;
+        categoryKey: string;
+        startMonth: string | null;
+        payVia: string;
+        creditCardId: string | null;
+      }>
+    >("/budget/commitments");
+    setCardStandings(
+      list.filter(
+        (c) => c.payVia === "CREDIT_CARD" && c.creditCardId === id,
+      ),
+    );
+  }
 
   useEffect(() => {
     if (!id) return;
     load().catch((e) =>
       setError(e instanceof Error ? e.message : "שגיאה"),
     );
+    loadStandings().catch(() => setCardStandings([]));
     api<UserCat[]>("/categories")
       .then(setUserCats)
       .catch(() => setUserCats([]));
@@ -204,6 +249,11 @@ function CardDetailInner() {
           currentBalance: Number(balance) || 0,
           creditLimit: limit.trim() === "" ? 0 : Math.abs(Number(limit) || 0),
           nextBillingDate: billing || null,
+          billingDay: (() => {
+            if (billingDay.trim() === "") return null;
+            const n = Math.floor(Number(billingDay));
+            return Number.isFinite(n) && n >= 1 && n <= 28 ? n : null;
+          })(),
         }),
       });
       setEditing(false);
@@ -256,9 +306,38 @@ function CardDetailInner() {
       setError("נא להזין תיאור");
       return;
     }
+    if (!chargeCategory) {
+      setError("נא לבחור קטגוריה");
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
+      if (chargeMode === "standing") {
+        await api("/budget/commitments", {
+          method: "POST",
+          body: JSON.stringify({
+            titleHe: chargeDesc.trim(),
+            categoryKey: chargeCategory,
+            expectedAmount: amount,
+            nature: "FIXED",
+            cadence: "MONTHLY",
+            payVia: "CREDIT_CARD",
+            creditCardId: card.id,
+            startMonth: month,
+          }),
+        });
+        setChargeDesc("");
+        setChargeAmount("");
+        setChargeInstallments("1");
+        setChargeMode("once");
+        await loadStandings();
+        setChargeFeedback(
+          `נוספה הוראת קבע באשראי מ־${month} — תופיע בתנועות כקנייה בכרטיס בכל חודש`,
+        );
+        return;
+      }
+
       const res = await api<{
         mode: "ONE_TIME" | "INSTALLMENTS";
         thisMonthCharge: number;
@@ -277,6 +356,7 @@ function CardDetailInner() {
       setChargeDesc("");
       setChargeAmount("");
       setChargeInstallments("1");
+      setChargeMode("once");
       await load();
       if (res.mode === "INSTALLMENTS") {
         setChargeFeedback(
@@ -288,6 +368,23 @@ function CardDetailInner() {
       } else {
         setChargeFeedback(`נרשמה קנייה · ${formatIls(res.thisMonthCharge)}`);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function executeDeactivateStanding(standingId: string) {
+    setBusy(true);
+    setError(null);
+    setPendingConfirm(null);
+    try {
+      await api(`/budget/commitments/${standingId}/deactivate`, {
+        method: "POST",
+      });
+      setChargeFeedback("הוראת הקבע באשראי הוסרה");
+      await loadStandings();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
@@ -401,17 +498,32 @@ function CardDetailInner() {
         }
         subtitle={card.provider || "פרטי כרטיס אשראי"}
         actions={
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setOpenCharge((v) => !v);
-              setOpenPlan(false);
-              setEditing(false);
-            }}
-          >
-            {openCharge ? "סגור" : "+ תנועה בכרטיס"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setOpenCharge(true);
+                setChargeMode("standing");
+                setOpenPlan(false);
+                setEditing(false);
+              }}
+            >
+              הוראת קבע
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setOpenCharge((v) => !v);
+                if (!openCharge) setChargeMode("once");
+                setOpenPlan(false);
+                setEditing(false);
+              }}
+            >
+              {openCharge ? "סגור" : "+ תנועה בכרטיס"}
+            </button>
+          </div>
         }
         footer={<DebtsSubNav />}
       />
@@ -461,6 +573,17 @@ function CardDetailInner() {
           onConfirm={() => void executeDeleteTx(pendingConfirm.tx)}
         />
       )}
+      {pendingConfirm?.kind === "deactivate-standing" && (
+        <ConfirmPanel
+          title="הסרת הוראת קבע באשראי"
+          danger
+          busy={busy}
+          confirmLabel="הסרה"
+          message={`להסיר את «${pendingConfirm.titleHe}»? חיובים שכבר נרשמו נשארים.`}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => void executeDeactivateStanding(pendingConfirm.id)}
+        />
+      )}
       {chargeFeedback && !error && (
         <p className="badge good" role="status">
           {chargeFeedback}
@@ -482,6 +605,12 @@ function CardDetailInner() {
             <div>
               <span className="muted">זמין</span>
               <strong>{formatIls(card.availableCredit)}</strong>
+            </div>
+            <div>
+              <span className="muted">יום חיוב</span>
+              <strong>
+                {card.billingDay != null ? `ב־${card.billingDay} לחודש` : "—"}
+              </strong>
             </div>
             <div>
               <span className="muted">חיוב הבא</span>
@@ -517,27 +646,38 @@ function CardDetailInner() {
         <form
           className="card-tx-draft"
           onSubmit={onRecordCharge}
-          aria-label="תנועה חדשה בכרטיס"
+          aria-label={
+            chargeMode === "standing"
+              ? "הוראת קבע חדשה בכרטיס"
+              : "תנועה חדשה בכרטיס"
+          }
         >
-          <p className="debts-totals-eyebrow">תנועה בכרטיס</p>
+          <p className="debts-totals-eyebrow">
+            {chargeMode === "standing" ? "הוראת קבע באשראי" : "תנועה בכרטיס"}
+          </p>
           <p className="muted debt-wizard-hint">
-            דומה לתנועות — כאן הכרטיס כבר נבחר. שמירה רושמת קנייה / פריסה בלי
-            לגעת בעו״ש עד סילוק.
+            {chargeMode === "standing"
+              ? `נשמרת לחודש ${labelMonthHe(month)} ואילך — בכל חודש תירשם קנייה בכרטיס הזה (לא פריסת תשלומים).`
+              : "דומה לתנועות — כאן הכרטיס כבר נבחר. שמירה רושמת קנייה / פריסה בלי לגעת בעו״ש עד סילוק."}
           </p>
           <div className="card-tx-draft-row">
-            <input
-              type="date"
-              className="cell-input"
-              value={chargeDate}
-              onChange={(e) => setChargeDate(e.target.value)}
-              aria-label="תאריך"
-              required
-            />
+            {chargeMode !== "standing" && (
+              <input
+                type="date"
+                className="cell-input"
+                value={chargeDate}
+                onChange={(e) => setChargeDate(e.target.value)}
+                aria-label="תאריך"
+                required
+              />
+            )}
             <input
               className="cell-input"
               value={chargeDesc}
               onChange={(e) => setChargeDesc(e.target.value)}
-              placeholder="עבור מה"
+              placeholder={
+                chargeMode === "standing" ? "שם ההוראה (למשל מנוי)" : "עבור מה"
+              }
               aria-label="תיאור"
               required
               autoFocus
@@ -560,31 +700,42 @@ function CardDetailInner() {
               required
             />
             <button className="btn" type="submit" disabled={busy}>
-              שמירה
+              {chargeMode === "standing" ? "שמור הוראת קבע" : "שמירה"}
             </button>
           </div>
           <div className="card-tx-draft-pay">
-            <div className="dir-chips" role="group" aria-label="חד־פעמי או תשלומים">
+            <div className="dir-chips" role="group" aria-label="סוג רישום בכרטיס">
               <button
                 type="button"
-                className={`dir-chip${installmentN <= 1 ? " active" : ""}`}
-                onClick={() => setChargeInstallments("1")}
+                className={`dir-chip${chargeMode === "once" ? " active" : ""}`}
+                onClick={() => {
+                  setChargeMode("once");
+                  setChargeInstallments("1");
+                }}
               >
                 חד־פעמי
               </button>
               <button
                 type="button"
-                className={`dir-chip${installmentN >= 2 ? " active" : ""}`}
-                onClick={() =>
-                  setChargeInstallments(
-                    installmentN >= 2 ? String(installmentN) : "3",
-                  )
-                }
+                className={`dir-chip${chargeMode === "installments" ? " active" : ""}`}
+                onClick={() => {
+                  setChargeMode("installments");
+                  setChargeInstallments((n) =>
+                    Math.max(2, Number(n) || 1) >= 2 ? n : "3",
+                  );
+                }}
               >
                 בתשלומים
               </button>
+              <button
+                type="button"
+                className={`dir-chip${chargeMode === "standing" ? " active" : ""}`}
+                onClick={() => setChargeMode("standing")}
+              >
+                הוראת קבע
+              </button>
             </div>
-            {installmentN >= 2 && (
+            {chargeMode === "installments" && (
               <label className="field card-tx-n">
                 <span>מספר תשלומים</span>
                 <input
@@ -599,16 +750,70 @@ function CardDetailInner() {
             )}
           </div>
           <p className="card-charge-semantics">
-            {installmentN <= 1
-              ? "הסכום המלא נכנס להוצאות חודש התאריך וליתרת המחזור."
-              : monthlyPreview != null
-                ? `תשלום 1/${installmentN}: ${formatIls(monthlyPreview)} עכשיו · שאר ${formatIls(Math.round((chargeTotal - monthlyPreview) * 100) / 100)} בחודשים הבאים בלוח הפריסה.`
-                : "רק תשלום ראשון נספר עכשיו; היתר בלוח החודשים."}
-            {chargeOutsideFocus
+            {chargeMode === "standing"
+              ? `חיוב חוזר בכל חודש על «${card.name}» — לא פריסה חד־פעמית.`
+              : chargeMode === "once"
+                ? "הסכום המלא נכנס להוצאות חודש התאריך וליתרת המחזור."
+                : monthlyPreview != null
+                  ? `תשלום 1/${installmentN}: ${formatIls(monthlyPreview)} עכשיו · שאר ${formatIls(Math.round((chargeTotal - monthlyPreview) * 100) / 100)} בחודשים הבאים בלוח הפריסה.`
+                  : "רק תשלום ראשון נספר עכשיו; היתר בלוח החודשים."}
+            {chargeMode !== "standing" && chargeOutsideFocus
               ? ` התאריך בחודש ${chargeMonthKey} — לא ב«הוצאות במחזור» של ${month}.`
               : ""}
           </p>
         </form>
+      )}
+
+      {cardStandings.length > 0 && (
+        <section className="card" aria-label="הוראות קבע באשראי">
+          <p className="debts-totals-eyebrow">הוראות קבע בכרטיס זה</p>
+          <ul
+            className="card-standing-list"
+            style={{ listStyle: "none", padding: 0, margin: 0 }}
+          >
+            {cardStandings.map((s) => (
+              <li
+                key={s.id}
+                className="list-row"
+                style={{
+                  display: "flex",
+                  gap: "0.75rem",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  padding: "0.55rem 0",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <div>
+                  <strong>{s.titleHe}</strong>
+                  <span
+                    className="muted"
+                    style={{ marginInlineStart: "0.5rem" }}
+                  >
+                    {formatIls(Number(s.expectedAmount))} / חודש
+                    {s.startMonth ? ` · מ־${s.startMonth}` : ""}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="linkish muted"
+                  disabled={busy}
+                  aria-label={`הסרת הוראת קבע ${s.titleHe}`}
+                  onClick={() =>
+                    setPendingConfirm({
+                      kind: "deactivate-standing",
+                      id: s.id,
+                      titleHe: s.titleHe,
+                    })
+                  }
+                >
+                  הסרה
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <section className="debts-detail-section" aria-label="תשלומים פעילים">
@@ -869,7 +1074,19 @@ function CardDetailInner() {
                 </label>
               </div>
               <label className="field">
-                <span>מועד חיוב</span>
+                <span>יום חיוב בחודש (1–28)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={billingDay}
+                  onChange={(e) => setBillingDay(e.target.value)}
+                  placeholder="למשל 10"
+                  inputMode="numeric"
+                />
+              </label>
+              <label className="field">
+                <span>מועד חיוב הבא</span>
                 <input
                   type="date"
                   value={billing}

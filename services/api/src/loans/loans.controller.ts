@@ -21,17 +21,17 @@ export class LoansController {
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query("month") month?: string) {
-    return this.loans.list(user.userId, month || undefined);
+    return this.loans.list(user.ledgerUserId, month || undefined);
   }
 
   @Get(":id")
   get(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.loans.get(user.userId, id);
+    return this.loans.get(user.ledgerUserId, id);
   }
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateLoanDto) {
-    return this.loans.create(user.userId, dto);
+    return this.loans.create(user.ledgerUserId, dto);
   }
 
   @Patch(":id")
@@ -40,11 +40,11 @@ export class LoansController {
     @Param("id") id: string,
     @Body() dto: UpdateLoanDto,
   ) {
-    return this.loans.update(user.userId, id, dto);
+    return this.loans.update(user.ledgerUserId, id, dto);
   }
 
   @Delete(":id")
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.loans.remove(user.userId, id);
+    return this.loans.remove(user.ledgerUserId, id);
   }
 }

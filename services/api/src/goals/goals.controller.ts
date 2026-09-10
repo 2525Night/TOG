@@ -28,17 +28,17 @@ export class GoalsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query("month") month?: string) {
-    return this.goals.list(user.userId, month || undefined);
+    return this.goals.list(user.ledgerUserId, month || undefined);
   }
 
   @Get("month-pool")
   monthPool(@CurrentUser() user: AuthUser, @Query("month") month?: string) {
-    return this.goals.monthPool(user.userId, month || undefined);
+    return this.goals.monthPool(user.ledgerUserId, month || undefined);
   }
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateGoalDto) {
-    return this.goals.create(user.userId, dto);
+    return this.goals.create(user.ledgerUserId, dto);
   }
 
   @Patch(":id")
@@ -47,12 +47,12 @@ export class GoalsController {
     @Param("id") id: string,
     @Body() dto: UpdateGoalDto,
   ) {
-    return this.goals.update(user.userId, id, dto);
+    return this.goals.update(user.ledgerUserId, id, dto);
   }
 
   @Delete(":id")
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.goals.remove(user.userId, id);
+    return this.goals.remove(user.ledgerUserId, id);
   }
 
   @Post(":id/apply-surplus")
@@ -61,7 +61,7 @@ export class GoalsController {
     @Param("id") id: string,
     @Body() dto: ApplySurplusDto,
   ) {
-    return this.goals.applySurplus(user.userId, id, dto);
+    return this.goals.applySurplus(user.ledgerUserId, id, dto);
   }
 
   @Post(":id/reverse-allocation")
@@ -70,7 +70,7 @@ export class GoalsController {
     @Param("id") id: string,
     @Body() dto: ReverseAllocationDto,
   ) {
-    return this.goals.reverseAllocation(user.userId, id, dto);
+    return this.goals.reverseAllocation(user.ledgerUserId, id, dto);
   }
 
   @Post(":id/standing")
@@ -79,7 +79,7 @@ export class GoalsController {
     @Param("id") id: string,
     @Body() dto: CreateStandingDto,
   ) {
-    return this.goals.createStanding(user.userId, id, dto);
+    return this.goals.createStanding(user.ledgerUserId, id, dto);
   }
 
   @Post(":id/standing/apply-range")
@@ -88,11 +88,11 @@ export class GoalsController {
     @Param("id") id: string,
     @Body() dto: ApplyStandingRangeDto,
   ) {
-    return this.goals.applyStandingRange(user.userId, id, dto);
+    return this.goals.applyStandingRange(user.ledgerUserId, id, dto);
   }
 
   @Post(":id/standing/stop")
   stopStanding(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.goals.stopStanding(user.userId, id);
+    return this.goals.stopStanding(user.ledgerUserId, id);
   }
 }

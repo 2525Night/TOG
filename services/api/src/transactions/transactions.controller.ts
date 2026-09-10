@@ -33,7 +33,7 @@ export class TransactionsController {
     @Query("beforeId") beforeId?: string,
     @Query("older") older?: string,
   ) {
-    return this.transactions.list(user.userId, {
+    return this.transactions.list(user.ledgerUserId, {
       month: month || undefined,
       loanId: loanId || undefined,
       creditCardId: creditCardId || undefined,
@@ -46,7 +46,7 @@ export class TransactionsController {
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTransactionDto) {
-    return this.transactions.create(user.userId, dto);
+    return this.transactions.create(user.ledgerUserId, dto);
   }
 
   @Post("bulk-by-merchant")
@@ -61,7 +61,7 @@ export class TransactionsController {
       excludeId?: string;
     },
   ) {
-    return this.transactions.updateByMerchant(user.userId, body);
+    return this.transactions.updateByMerchant(user.ledgerUserId, body);
   }
 
   @Patch(":id")
@@ -70,11 +70,11 @@ export class TransactionsController {
     @Param("id") id: string,
     @Body() dto: UpdateTransactionDto,
   ) {
-    return this.transactions.update(user.userId, id, dto);
+    return this.transactions.update(user.ledgerUserId, id, dto);
   }
 
   @Delete(":id")
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.transactions.remove(user.userId, id);
+    return this.transactions.remove(user.ledgerUserId, id);
   }
 }

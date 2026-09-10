@@ -20,6 +20,7 @@ type Card = {
   cycleSpend: number;
   upcomingCharge: number;
   nextBillingDate: string | null;
+  billingDay: number | null;
   installmentCommitment: number;
 };
 
@@ -78,6 +79,7 @@ function CardsInner() {
   const [limit, setLimit] = useState("");
   const [balance, setBalance] = useState("");
   const [billing, setBilling] = useState("");
+  const [billingDay, setBillingDay] = useState("");
   const [seedPurchase, setSeedPurchase] = useState(false);
   const [created, setCreated] = useState<CreatedCard | null>(null);
   const [moreOpenId, setMoreOpenId] = useState<string | null>(null);
@@ -110,6 +112,7 @@ function CardsInner() {
     setLimit("");
     setBalance("");
     setBilling("");
+    setBillingDay("");
     setSeedPurchase(false);
     setCreated(null);
   }
@@ -162,6 +165,10 @@ function CardsInner() {
             creditLimit: limit.trim() === "" ? undefined : Math.abs(limitN),
             currentBalance: balance.trim() === "" ? 0 : Math.abs(balN),
             nextBillingDate: billing || undefined,
+            billingDay: (() => {
+              const n = Number(billingDay);
+              return Number.isFinite(n) && n >= 1 && n <= 28 ? n : undefined;
+            })(),
           }),
         },
       );
@@ -419,10 +426,23 @@ function CardsInner() {
               {step === 3 && (
                 <>
                   <p className="muted debt-wizard-hint">
-                    מתי הסכום יורד מהעו״ש כסילוק — לא כהוצאה כפולה.
+                    מתי הסכום יורד מהעו״ש כסילוק — לא כהוצאה כפולה. יום החיוב
+                    בחודש עוזר ליישר מחזורים (למשל כאל/MAX).
                   </p>
                   <label className="field">
-                    <span>מועד חיוב הבא</span>
+                    <span>יום חיוב בחודש (1–28)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      value={billingDay}
+                      onChange={(e) => setBillingDay(e.target.value)}
+                      placeholder="למשל 10"
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>מועד חיוב הבא (תאריך מדויק)</span>
                     <input
                       type="date"
                       value={billing}
@@ -558,7 +578,17 @@ function CardsInner() {
         )}
         {data?.items.map((card) => {
           const moreOpen = moreOpenId === card.id;
-          const quietHint = card.nextBillingDate
+          const quietHint = card.billingDay
+            ? `יום חיוב ${card.billingDay}${
+                card.nextBillingDate
+                  ? ` · הבא ${formatDate(card.nextBillingDate)}`
+                  : ""
+              }${
+                card.installmentCommitment > 0
+                  ? ` · תשלומים ${formatIls(card.installmentCommitment)}`
+                  : ""
+              }`
+            : card.nextBillingDate
             ? `חיוב ב־${formatDate(card.nextBillingDate)}${
                 card.installmentCommitment > 0
                   ? ` · תשלומים ${formatIls(card.installmentCommitment)}`
@@ -610,6 +640,12 @@ function CardsInner() {
                 >
                   הוסף חיוב
                 </Link>
+                <Link
+                  className="btn secondary"
+                  href={`${appHref(`/app/debts/cards/${card.id}`, month)}&standing=1`}
+                >
+                  הוראת קבע
+                </Link>
                 <button
                   type="button"
                   className="linkish"
@@ -638,7 +674,11 @@ function CardsInner() {
                     </div>
                     <div>
                       <span className="muted">חיוב הבא</span>
-                      <strong>{formatDate(card.nextBillingDate)}</strong>
+                      <strong>
+                        {card.billingDay != null
+                          ? `יום ${card.billingDay}`
+                          : formatDate(card.nextBillingDate)}
+                      </strong>
                     </div>
                   </div>
                   {card.installmentCommitment > 0 && (

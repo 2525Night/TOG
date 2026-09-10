@@ -1,20 +1,16 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * MoneyTail5 Android
+ * MoneyTail5 Android — MoneyTails5_V5.2
  *
- * By default the WebView loads the Next.js app on the host machine
- * (Android emulator → 10.0.2.2:3005).
- *
- * Physical device on same Wi‑Fi: set url to http://<PC-LAN-IP>:3005
- * Production: set url to your HTTPS web origin and cleartext: false.
+ * Production WebView → https://moneytail-web.vercel.app
+ * Local emulator: set url to http://10.0.2.2:3005 and cleartext: true, then sync.
  */
 const config: CapacitorConfig = {
   appId: "com.mtails.moneytail",
   appName: "MoneyTail5",
   webDir: "www",
   server: {
-    // Production domain (SSO-free). Rebuild after main→prod deploy is READY.
     url: "https://moneytail-web.vercel.app",
     cleartext: false,
   },

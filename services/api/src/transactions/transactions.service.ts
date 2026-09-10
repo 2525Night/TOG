@@ -122,11 +122,16 @@ export class TransactionsService {
       });
       if (loan) {
         const next = Math.max(0, Number(loan.principalBalance) - delta);
+        const closed = next <= 0.001;
         await db.loan.update({
           where: { id: opts.loanId },
           data: {
             principalBalance: new Prisma.Decimal(next),
-            ...(opts.sign > 0 && next <= 0.001 ? { nextDueDate: null } : {}),
+            ...(closed
+              ? { active: false, nextDueDate: null }
+              : opts.sign < 0
+                ? { active: true }
+                : {}),
           },
         });
       }
