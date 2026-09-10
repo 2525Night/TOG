@@ -1,7 +1,7 @@
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
   (process.env.NODE_ENV === "production"
-    ? "https://moneytail-api-vercel.vercel.app"
+    ? "https://moneytail-api.vercel.app"
     : "http://localhost:3001");
 const TOKEN_KEY = "mt_token";
 const NATIVE_TOKEN_KEY = "moneytail.session.token";
