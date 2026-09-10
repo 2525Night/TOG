@@ -105,8 +105,9 @@ export class DashboardService {
     ]);
 
     const budget = toBudgetSnapshot(facts);
+    const openLoans = loans.filter((l) => Number(l.principalBalance) > 0.001);
     const debtPrincipal =
-      loans.reduce((s, l) => s + Number(l.principalBalance), 0) +
+      openLoans.reduce((s, l) => s + Number(l.principalBalance), 0) +
       cards.reduce((s, c) => s + Number(c.currentBalance), 0) +
       (facts.checkingBalanceNow < 0
         ? Math.abs(facts.checkingBalanceNow)
@@ -141,12 +142,12 @@ export class DashboardService {
       debtsSummary: {
         principalTotal: Math.round(debtPrincipal * 100) / 100,
         count:
-          loans.length +
+          openLoans.length +
           cards.length +
           (facts.checkingBalanceNow < 0 ? 1 : 0),
         loansPrincipal:
           Math.round(
-            loans.reduce((s, l) => s + Number(l.principalBalance), 0) * 100,
+            openLoans.reduce((s, l) => s + Number(l.principalBalance), 0) * 100,
           ) / 100,
         cardsBalance:
           Math.round(

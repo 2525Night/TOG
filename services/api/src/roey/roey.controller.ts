@@ -54,7 +54,7 @@ export class RoeyController {
 
   @Get("connections/google-ai-studio")
   connection(@CurrentUser() user: AuthUser) {
-    return this.roey.connection(user.userId);
+    return this.roey.connection(user.ledgerUserId);
   }
 
   @Post("connections/test")
@@ -62,7 +62,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: ConnectGoogleAiStudioDto,
   ) {
-    return this.roey.testConnection(user.userId, dto);
+    return this.roey.testConnection(user.ledgerUserId, dto);
   }
 
   @Post("connections/google-ai-studio")
@@ -70,12 +70,12 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: ConnectGoogleAiStudioDto,
   ) {
-    return this.roey.connect(user.userId, dto);
+    return this.roey.connect(user.ledgerUserId, dto);
   }
 
   @Get("connections/models")
   models(@CurrentUser() user: AuthUser) {
-    return this.roey.models(user.userId);
+    return this.roey.models(user.ledgerUserId);
   }
 
   @Patch("connections/model")
@@ -83,17 +83,17 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: SelectRoeyModelDto,
   ) {
-    return this.roey.selectModel(user.userId, dto);
+    return this.roey.selectModel(user.ledgerUserId, dto);
   }
 
   @Delete("connections/google-ai-studio")
   disconnect(@CurrentUser() user: AuthUser) {
-    return this.roey.disconnect(user.userId);
+    return this.roey.disconnect(user.ledgerUserId);
   }
 
   @Get("profile")
   profile(@CurrentUser() user: AuthUser) {
-    return this.roey.profile(user.userId);
+    return this.roey.profile(user.ledgerUserId);
   }
 
   @Patch("profile")
@@ -101,12 +101,12 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateRoeyProfileDto,
   ) {
-    return this.roey.updateProfile(user.userId, dto);
+    return this.roey.updateProfile(user.ledgerUserId, dto);
   }
 
   @Get("journey")
   journey(@CurrentUser() user: AuthUser) {
-    return this.roey.journey(user.userId);
+    return this.roey.journey(user.ledgerUserId);
   }
 
   @Get("context")
@@ -114,7 +114,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.roey.context(user.userId, month);
+    return this.roey.context(user.ledgerUserId, month);
   }
 
   @Get("forecast")
@@ -122,17 +122,17 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.roey.forecast(user.userId, month);
+    return this.roey.forecast(user.ledgerUserId, month);
   }
 
   @Post("chat")
   chat(@CurrentUser() user: AuthUser, @Body() dto: RoeyChatDto) {
-    return this.roey.chat(user.userId, dto);
+    return this.roey.chat(user.ledgerUserId, dto);
   }
 
   @Get("conversations")
   conversations(@CurrentUser() user: AuthUser) {
-    return this.roey.conversations(user.userId);
+    return this.roey.conversations(user.ledgerUserId);
   }
 
   @Get("conversations/:id")
@@ -140,7 +140,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.roey.conversation(user.userId, id);
+    return this.roey.conversation(user.ledgerUserId, id);
   }
 
   @Delete("conversations/:id")
@@ -148,12 +148,12 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.roey.deleteConversation(user.userId, id);
+    return this.roey.deleteConversation(user.ledgerUserId, id);
   }
 
   @Get("actions")
   actionsList(@CurrentUser() user: AuthUser) {
-    return this.actions.list(user.userId);
+    return this.actions.list(user.ledgerUserId);
   }
 
   @Get("market")
@@ -166,7 +166,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateRoeyActionProposalDto,
   ) {
-    return this.actions.propose(user.userId, dto);
+    return this.actions.propose(user.ledgerUserId, dto);
   }
 
   @Post("actions/:id/approve")
@@ -175,7 +175,7 @@ export class RoeyController {
     @Param("id") id: string,
     @Body() dto: ApproveRoeyActionDto,
   ) {
-    return this.actions.approve(user.userId, id, dto);
+    return this.actions.approve(user.ledgerUserId, id, dto);
   }
 
   @Post("actions/:id/reject")
@@ -184,12 +184,12 @@ export class RoeyController {
     @Param("id") id: string,
     @Body() dto: RejectRoeyActionDto,
   ) {
-    return this.actions.reject(user.userId, id, dto);
+    return this.actions.reject(user.ledgerUserId, id, dto);
   }
 
   @Get("nudges")
   nudgesList(@CurrentUser() user: AuthUser) {
-    return this.nudges.list(user.userId);
+    return this.nudges.list(user.ledgerUserId);
   }
 
   @Post("nudges/:id/dismiss")
@@ -197,7 +197,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.nudges.dismiss(user.userId, id);
+    return this.nudges.dismiss(user.ledgerUserId, id);
   }
 
   @Post("nudges/:id/snooze")
@@ -205,12 +205,12 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.nudges.snooze(user.userId, id);
+    return this.nudges.snooze(user.ledgerUserId, id);
   }
 
   @Get("plan")
   plan(@CurrentUser() user: AuthUser) {
-    return this.financialPlan.get(user.userId);
+    return this.financialPlan.get(user.ledgerUserId);
   }
 
   @Patch("plan")
@@ -218,7 +218,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpsertFinancialPlanDto,
   ) {
-    return this.financialPlan.upsert(user.userId, dto);
+    return this.financialPlan.upsert(user.ledgerUserId, dto);
   }
 
   @Post("plan/review")
@@ -226,12 +226,12 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: ReviewFinancialPlanDto,
   ) {
-    return this.financialPlan.review(user.userId, dto);
+    return this.financialPlan.review(user.ledgerUserId, dto);
   }
 
   @Get("memory")
   memoryList(@CurrentUser() user: AuthUser) {
-    return this.memory.list(user.userId);
+    return this.memory.list(user.ledgerUserId);
   }
 
   @Post("memory")
@@ -239,7 +239,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Body() dto: UpsertRoeyMemoryDto,
   ) {
-    return this.memory.upsert(user.userId, dto);
+    return this.memory.upsert(user.ledgerUserId, dto);
   }
 
   @Delete("memory/:id")
@@ -247,17 +247,17 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.memory.forget(user.userId, id);
+    return this.memory.forget(user.ledgerUserId, id);
   }
 
   @Get("outcomes")
   outcomes(@CurrentUser() user: AuthUser) {
-    return this.reconciliation.reconcileDue(user.userId);
+    return this.reconciliation.reconcileDue(user.ledgerUserId);
   }
 
   @Get("escalations")
   escalationList(@CurrentUser() user: AuthUser) {
-    return this.escalations.list(user.userId);
+    return this.escalations.list(user.ledgerUserId);
   }
 
   @Post("escalations/:id/approve-handoff")
@@ -265,7 +265,7 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.escalations.approveHandoff(user.userId, id);
+    return this.escalations.approveHandoff(user.ledgerUserId, id);
   }
 
   @Post("escalations/:id/dismiss")
@@ -273,11 +273,11 @@ export class RoeyController {
     @CurrentUser() user: AuthUser,
     @Param("id") id: string,
   ) {
-    return this.escalations.dismiss(user.userId, id);
+    return this.escalations.dismiss(user.ledgerUserId, id);
   }
 
   @Get("runs")
   runs(@CurrentUser() user: AuthUser) {
-    return this.orchestrator.recentRuns(user.userId);
+    return this.orchestrator.recentRuns(user.ledgerUserId);
   }
 }

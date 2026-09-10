@@ -333,7 +333,7 @@ function escalationTypeHe(value: string) {
 }
 
 function sourceHe(source: string) {
-  if (source === "MONEYTAIL") return "MoneyTail";
+  if (source === "MONEYTAIL") return "MoneyTail5";
   if (source === "BANK_OF_ISRAEL") return "בנק ישראל";
   if (source === "CBS") return "הלמ״ס";
   return source;

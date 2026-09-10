@@ -59,8 +59,14 @@ model User {
   jurisdiction        String   @default("IL")
   currency            String   @default("ILS")
   onboardingCompleted Boolean  @default(false)
+  /** When set, this user reads/writes the owner's ledger (שיתוף זוגי). */
+  householdOwnerId    String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  householdOwner      User?    @relation("HouseholdMembers", fields: [householdOwnerId], references: [id], onDelete: SetNull)
+  householdMembers    User[]   @relation("HouseholdMembers")
+  householdInvites    HouseholdInvite[] @relation("HouseholdInviteOwner")
 
   accounts            FinancialAccount[]
   transactions        Transaction[]
@@ -84,6 +90,23 @@ model User {
   roeyAgentRuns       RoeyAgentRun[]
   roeySemanticMemory  RoeySemanticMemory[]
   roeyEscalations     RoeyEscalation[]
+
+  @@index([householdOwnerId])
+}
+
+model HouseholdInvite {
+  id        String    @id @default(cuid())
+  ownerId   String
+  code      String    @unique
+  labelHe   String?
+  claimedBy String?
+  claimedAt DateTime?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  owner User @relation("HouseholdInviteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
 }
 
 model FinancialAccount {

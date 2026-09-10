@@ -27,7 +27,7 @@ export class CreditCardsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query("month") month?: string) {
-    return this.cards.list(user.userId, month || undefined);
+    return this.cards.list(user.ledgerUserId, month || undefined);
   }
 
   /** Must be registered before :id routes. */
@@ -38,7 +38,7 @@ export class CreditCardsController {
     @Query("creditCardId") creditCardId?: string,
   ) {
     return this.cards.chargeDueInstallments(
-      user.userId,
+      user.ledgerUserId,
       month,
       creditCardId || undefined,
     );
@@ -50,12 +50,12 @@ export class CreditCardsController {
     @Param("id") id: string,
     @Query("month") month?: string,
   ) {
-    return this.cards.get(user.userId, id, month || undefined);
+    return this.cards.get(user.ledgerUserId, id, month || undefined);
   }
 
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCreditCardDto) {
-    return this.cards.create(user.userId, dto);
+    return this.cards.create(user.ledgerUserId, dto);
   }
 
   @Patch(":id")
@@ -64,12 +64,12 @@ export class CreditCardsController {
     @Param("id") id: string,
     @Body() dto: UpdateCreditCardDto,
   ) {
-    return this.cards.update(user.userId, id, dto);
+    return this.cards.update(user.ledgerUserId, id, dto);
   }
 
   @Delete(":id")
   remove(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.cards.remove(user.userId, id);
+    return this.cards.remove(user.ledgerUserId, id);
   }
 
   @Post(":id/charges")
@@ -78,7 +78,7 @@ export class CreditCardsController {
     @Param("id") id: string,
     @Body() dto: RecordCardChargeDto,
   ) {
-    return this.cards.recordCharge(user.userId, id, dto);
+    return this.cards.recordCharge(user.ledgerUserId, id, dto);
   }
 
   @Post(":id/installments")
@@ -87,7 +87,7 @@ export class CreditCardsController {
     @Param("id") id: string,
     @Body() dto: CreateInstallmentPlanDto,
   ) {
-    return this.cards.createInstallment(user.userId, id, dto);
+    return this.cards.createInstallment(user.ledgerUserId, id, dto);
   }
 
   @Patch(":id/installments/:planId")
@@ -97,7 +97,7 @@ export class CreditCardsController {
     @Param("planId") planId: string,
     @Body() dto: UpdateInstallmentPlanDto,
   ) {
-    return this.cards.updateInstallment(user.userId, id, planId, dto);
+    return this.cards.updateInstallment(user.ledgerUserId, id, planId, dto);
   }
 
   @Delete(":id/installments/:planId")
@@ -106,6 +106,6 @@ export class CreditCardsController {
     @Param("id") id: string,
     @Param("planId") planId: string,
   ) {
-    return this.cards.removeInstallment(user.userId, id, planId);
+    return this.cards.removeInstallment(user.ledgerUserId, id, planId);
   }
 }

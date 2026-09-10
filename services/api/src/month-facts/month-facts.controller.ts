@@ -13,7 +13,7 @@ export class MonthFactsController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.monthFacts.forMonth(user.userId, month);
+    return this.monthFacts.forMonth(user.ledgerUserId, month);
   }
 
   @Get("vocab")

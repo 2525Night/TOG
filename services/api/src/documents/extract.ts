@@ -469,16 +469,35 @@ export function parseCsvTransactions(text: string): DraftRow[] {
     h.trim().toLowerCase(),
   );
   const idx = {
-    date: findCol(headerCells, ["date", "bookedat", "תאריך"]),
-    amount: findCol(headerCells, ["amount", "sum", "סכום"]),
+    date: findCol(headerCells, [
+      "date",
+      "bookedat",
+      "תאריך",
+      "תאריך עסקה",
+      "תאריך חיוב",
+      "transaction date",
+      "value date",
+    ]),
+    amount: findCol(headerCells, [
+      "amount",
+      "sum",
+      "סכום",
+      "סכום עסקה",
+      "סכום חיוב",
+      "original amount",
+    ]),
     description: findCol(headerCells, [
       "description",
       "desc",
       "memo",
       "תיאור",
       "פרטים",
+      "בית עסק",
+      "שם בית העסק",
+      "merchant",
+      "details",
     ]),
-    type: findCol(headerCells, ["type", "direction", "סוג"]),
+    type: findCol(headerCells, ["type", "direction", "סוג", "סוג עסקה"]),
     category: findCol(headerCells, ["category", "קטגוריה"]),
     credit: findCol(headerCells, [
       "credit",
@@ -486,6 +505,7 @@ export function parseCsvTransactions(text: string): DraftRow[] {
       "הפקדה",
       "הכנסה",
       "incoming",
+      "זיכוי",
     ]),
     debit: findCol(headerCells, [
       "debit",
@@ -493,6 +513,8 @@ export function parseCsvTransactions(text: string): DraftRow[] {
       "משיכה",
       "הוצאה",
       "outgoing",
+      "חיוב",
+      "סכום לחיוב",
     ]),
     balance: findCol(headerCells, [
       "balance",

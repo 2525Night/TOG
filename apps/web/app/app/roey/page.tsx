@@ -36,6 +36,7 @@ type Connection = {
   modelId?: string | null;
   status?: string;
   lastValidatedAt?: string | null;
+  platformManaged?: boolean;
 };
 
 type Journey = {
@@ -218,21 +219,25 @@ function RoeyPageInner() {
       setProfile(nextProfile);
       setNudges(nextNudges);
       if (nextConnection.connected) {
-        const [modelResult, forecastResult, nextSessions] = await Promise.all([
-          api<{ models: ModelOption[]; selectedModelId: string | null }>(
-            "/roey/connections/models",
-          ),
-          api<{ forecast: Forecast; risk: Risk }>(
-            `/roey/forecast?month=${encodeURIComponent(month)}`,
-          ),
-          nextProfile.memoryEnabled
-            ? api<SavedSession[]>("/roey/conversations")
-            : Promise.resolve([]),
-        ]);
-        setModels(modelResult.models);
+        const forecastResult = await api<{ forecast: Forecast; risk: Risk }>(
+          `/roey/forecast?month=${encodeURIComponent(month)}`,
+        );
         setForecast(forecastResult.forecast);
         setRisk(forecastResult.risk);
-        setSessions(nextSessions);
+        if (nextProfile.memoryEnabled) {
+          setSessions(await api<SavedSession[]>("/roey/conversations"));
+        } else {
+          setSessions([]);
+        }
+        if (!nextConnection.platformManaged) {
+          const modelResult = await api<{
+            models: ModelOption[];
+            selectedModelId: string | null;
+          }>("/roey/connections/models");
+          setModels(modelResult.models);
+        } else {
+          setModels([]);
+        }
       } else {
         setModels([]);
         setForecast(null);
@@ -642,6 +647,12 @@ function RoeyPageInner() {
             </div>
           ) : (
             <>
+              {connection.platformManaged ? (
+                <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                  Roey מחובר במפתח מובנה של MoneyTail5 — אפשר להתחיל לדבר בלי
+                  הגדרות. בהגדרות אפשר לחבר מפתח אישי במקום.
+                </p>
+              ) : null}
               <div className="roey-chat card">
                 <div className="roey-session-toolbar">
                   {profile?.memoryEnabled ? (
@@ -713,7 +724,7 @@ function RoeyPageInner() {
                     <div className="roey-avatar large" aria-hidden="true">R</div>
                     <h2>במה נתחיל?</h2>
                     <p className="muted">
-                      אני משתמש רק בנתונים המחושבים של MoneyTail ומציין כשהתמונה חלקית.
+                      אני משתמש רק בנתונים המחושבים של MoneyTail5 ומציין כשהתמונה חלקית.
                     </p>
                     <div className="roey-prompts">
                       {QUICK_PROMPTS.map((prompt) => (

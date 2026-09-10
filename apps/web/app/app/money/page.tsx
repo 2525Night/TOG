@@ -313,7 +313,13 @@ const TX_GROUP_BY_DAY_KEY = "moneytail.txGroupByDay";
 type PendingConfirm =
   | { kind: "delete-tx"; tx: Tx }
   | { kind: "remove-commitment"; id: string; titleHe: string }
-  | { kind: "undo-import"; docId: string; latestConfirmed: boolean };
+  | { kind: "undo-import"; docId: string; latestConfirmed: boolean }
+  | {
+      kind: "apply-similar";
+      message: string;
+      onYes: () => void;
+      onNo: () => void;
+    };
 
 function statusHe(status: string) {
   if (status === "CONFIRMED") return "אושר";
@@ -713,6 +719,18 @@ function MoneyInner() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, tab, loanFilter, cardFilter]);
+
+  useEffect(() => {
+    const add = search.get("add");
+    if (add !== "expense" && add !== "income") return;
+    if (tab !== "txs") setTab("txs");
+    openAddDraft(add);
+    const params = new URLSearchParams(search.toString());
+    params.delete("add");
+    const qs = params.toString();
+    router.replace(qs ? `/app/money?${qs}` : "/app/money", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   useEffect(() => {
     const node = listSentinelRef.current;
@@ -1366,12 +1384,22 @@ function MoneyInner() {
             x.categoryKey !== categoryKey,
         ).length
       : 0;
-    const applySimilar =
-      similarCount > 0 &&
-      window.confirm(
-        `להחיל את הקטגוריה גם על ${similarCount} תנועות דומות בחודש?`,
-      );
-    await saveTxEdit(t, { categoryKey }, { applySimilar });
+    if (similarCount > 0) {
+      setPendingConfirm({
+        kind: "apply-similar",
+        message: `להחיל את הקטגוריה גם על ${similarCount} תנועות דומות בחודש?`,
+        onYes: () => {
+          setPendingConfirm(null);
+          void saveTxEdit(t, { categoryKey }, { applySimilar: true });
+        },
+        onNo: () => {
+          setPendingConfirm(null);
+          void saveTxEdit(t, { categoryKey }, { applySimilar: false });
+        },
+      });
+      return;
+    }
+    await saveTxEdit(t, { categoryKey }, { applySimilar: false });
   }
 
   async function saveNote(t: Tx, raw: string) {
@@ -1508,18 +1536,34 @@ function MoneyInner() {
                   const descEl = document.getElementById(
                     `desc-${t.id}`,
                   ) as HTMLInputElement;
-                  const similar =
-                    Boolean(t.merchantNorm) &&
-                    window.confirm("להחיל גם על תנועות דומות בחודש?");
-                  void saveTxEdit(
-                    t,
-                    {
-                      direction: dirEl.value as Tx["direction"],
-                      categoryKey: catEl.value,
-                      description: descEl.value,
-                    },
-                    { applySimilar: similar },
-                  );
+                  const similarCount = t.merchantNorm
+                    ? monthTxs.filter(
+                        (x) =>
+                          x.id !== t.id &&
+                          x.merchantNorm === t.merchantNorm,
+                      ).length
+                    : 0;
+                  const patch = {
+                    direction: dirEl.value as Tx["direction"],
+                    categoryKey: catEl.value,
+                    description: descEl.value,
+                  };
+                  if (similarCount > 0) {
+                    setPendingConfirm({
+                      kind: "apply-similar",
+                      message: "להחיל גם על תנועות דומות בחודש?",
+                      onYes: () => {
+                        setPendingConfirm(null);
+                        void saveTxEdit(t, patch, { applySimilar: true });
+                      },
+                      onNo: () => {
+                        setPendingConfirm(null);
+                        void saveTxEdit(t, patch, { applySimilar: false });
+                      },
+                    });
+                    return;
+                  }
+                  void saveTxEdit(t, patch, { applySimilar: false });
                 }}
               >
                 שמירה
@@ -1920,6 +1964,17 @@ function MoneyInner() {
           }}
         />
       )}
+      {pendingConfirm?.kind === "apply-similar" && (
+        <ConfirmPanel
+          title="החלה על תנועות דומות"
+          busy={busy}
+          confirmLabel="החל גם על דומים"
+          cancelLabel="רק על זו"
+          message={pendingConfirm.message}
+          onCancel={pendingConfirm.onNo}
+          onConfirm={pendingConfirm.onYes}
+        />
+      )}
 
       {(tab === "txs" || tab === "fixed") && (
         <>
@@ -2023,9 +2078,11 @@ function MoneyInner() {
                   <button
                     type="button"
                     className="btn"
+                    data-testid="quick-add-expense"
+                    aria-label="הוצאה מהירה"
                     onClick={() => openAddDraft("expense")}
                   >
-                    + הוצאה
+                    + הוצאה מהירה
                   </button>
                   <button
                     type="button"
@@ -2290,8 +2347,8 @@ function MoneyInner() {
               <div className="tx-draft-block">
               <p className="muted tx-draft-hint">
                 {addDraft.mode === "income"
-                  ? "מלאו סכום וקטגוריה — ואז שמירה"
-                  : "מלאו סכום וקטגוריה — תשלום מהעו״ש כברירת מחדל"}
+                  ? "חובה: סכום וקטגוריה · אופציונלי: מאיפה — ואז שמירה"
+                  : "חובה: סכום וקטגוריה · אופציונלי: עבור מה — תשלום מהעו״ש כברירת מחדל"}
               </p>
               <div
                 className={`tx-dense-row draft with-date tx-draft-form ${
@@ -2742,7 +2799,8 @@ function MoneyInner() {
             <div className="import-upload-head">
               <strong>העלאת דף חשבון</strong>
               <p className="muted">
-                CSV, PDF או תמונה — נחלץ לטיוטה, אתם מאשרים לפני שמירה
+                CSV מ־כאל / MAX / בנק, PDF או תמונה — נחלץ לטיוטה, אתם מאשרים
+                לפני שמירה. בעמודות מוכרות: תאריך, סכום/חיוב/זכות, תיאור/בית עסק.
               </p>
             </div>
 

@@ -98,7 +98,7 @@ function OverviewInner() {
         <p className="form-error" role="alert">
           {error}
           {/fetch|network|Failed|ECONNREFUSED|timeout/i.test(error)
-            ? " · בדקו שה־API רץ על פורט 3001"
+            ? " · בדקו את החיבור ונסו שוב"
             : ""}
         </p>
       )}

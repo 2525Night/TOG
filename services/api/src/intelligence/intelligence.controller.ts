@@ -25,7 +25,7 @@ export class IntelligenceController {
   ) {
     const monthsBack = Math.min(24, Math.max(2, Number(months) || 6));
     return this.intelligence.buildReport(
-      user.userId,
+      user.ledgerUserId,
       monthsBack,
       month || undefined,
     );
@@ -38,7 +38,7 @@ export class IntelligenceController {
     @Res() res: Response,
   ) {
     const csv = await this.intelligence.exportBalanceCsv(
-      user.userId,
+      user.ledgerUserId,
       month || undefined,
     );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -54,16 +54,16 @@ export class IntelligenceController {
     @CurrentUser() user: AuthUser,
     @Query("month") month?: string,
   ) {
-    return this.intelligence.analyze(user.userId, month || undefined);
+    return this.intelligence.analyze(user.ledgerUserId, month || undefined);
   }
 
   @Post("alerts/:id/dismiss")
   dismiss(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.intelligence.dismissAlert(user.userId, id);
+    return this.intelligence.dismissAlert(user.ledgerUserId, id);
   }
 
   @Post("alerts/:id/snooze")
   snooze(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.intelligence.snoozeAlert(user.userId, id, 7);
+    return this.intelligence.snoozeAlert(user.ledgerUserId, id, 7);
   }
 }

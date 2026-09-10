@@ -21,12 +21,12 @@ export class DocumentsController {
 
   @Get()
   list(@CurrentUser() user: AuthUser) {
-    return this.documents.list(user.userId);
+    return this.documents.list(user.ledgerUserId);
   }
 
   @Get(":id")
   get(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.documents.get(user.userId, id);
+    return this.documents.get(user.ledgerUserId, id);
   }
 
   @Post("upload")
@@ -42,7 +42,7 @@ export class DocumentsController {
     @Body() body: { storageMode?: "TEMPORARY" | "PERMANENT" },
   ) {
     return this.documents.upload(
-      user.userId,
+      user.ledgerUserId,
       file,
       body?.storageMode === "PERMANENT" ? "PERMANENT" : "TEMPORARY",
     );
@@ -64,7 +64,7 @@ export class DocumentsController {
     },
   ) {
     return this.documents.confirm(
-      user.userId,
+      user.ledgerUserId,
       id,
       body?.selectedIndexes,
       body?.overrides,
@@ -73,11 +73,11 @@ export class DocumentsController {
 
   @Post(":id/reject")
   reject(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.documents.reject(user.userId, id);
+    return this.documents.reject(user.ledgerUserId, id);
   }
 
   @Post(":id/undo")
   undo(@CurrentUser() user: AuthUser, @Param("id") id: string) {
-    return this.documents.undoImport(user.userId, id);
+    return this.documents.undoImport(user.ledgerUserId, id);
   }
 }

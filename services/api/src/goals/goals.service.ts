@@ -480,7 +480,7 @@ export class GoalsService {
     const account = await this.ensureCheckingAccount(userId);
     const execution = await this.prisma.$transaction(
       async (db) => {
-        await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+        await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
         const existing = await db.goal.findFirst({ where: { id, userId } });
         if (!existing) throw new NotFoundException("יעד לא נמצא");
         const remaining = Math.max(

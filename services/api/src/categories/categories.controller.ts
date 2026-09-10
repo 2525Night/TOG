@@ -13,7 +13,7 @@ export class CategoriesController {
     @CurrentUser() user: AuthUser,
     @Query("direction") direction?: string,
   ) {
-    return this.categories.list(user.userId, direction);
+    return this.categories.list(user.ledgerUserId, direction);
   }
 
   @Post()
@@ -26,6 +26,6 @@ export class CategoriesController {
       nature?: "fixed" | "variable" | "periodic";
     },
   ) {
-    return this.categories.create(user.userId, body);
+    return this.categories.create(user.ledgerUserId, body);
   }
 }
