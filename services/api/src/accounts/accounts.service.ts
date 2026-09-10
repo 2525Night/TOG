@@ -23,9 +23,64 @@ export class AccountsService {
     });
   }
 
+  /** Pocket cash wallet — at most one active CASH account per user. */
+  async ensureCashAccount(userId: string) {
+    const existing = await this.prisma.financialAccount.findFirst({
+      where: { userId, isActive: true, kind: "CASH" },
+      orderBy: { createdAt: "asc" },
+    });
+    if (existing) return existing;
+    const account = await this.prisma.financialAccount.create({
+      data: {
+        userId,
+        name: "מזומן בכיס",
+        kind: "CASH",
+        currentBalance: new Prisma.Decimal(0),
+        sourceType: "USER_INPUT",
+        userConfirmed: true,
+      },
+    });
+    await this.prisma.auditEvent.create({
+      data: {
+        userId,
+        action: "ACCOUNT_CREATED",
+        meta: JSON.stringify({ accountId: account.id, kind: "CASH" }),
+      },
+    });
+    this.monthFacts.invalidateUser(userId);
+    return account;
+  }
+
   async create(userId: string, dto: CreateAccountDto) {
+    if (dto.kind === "CASH") {
+      const existingCash = await this.prisma.financialAccount.findFirst({
+        where: { userId, isActive: true, kind: "CASH" },
+      });
+      if (existingCash) {
+        throw new BadRequestException("כבר קיים ארנק מזומן");
+      }
+      const account = await this.prisma.financialAccount.create({
+        data: {
+          userId,
+          name: dto.name?.trim() || "מזומן בכיס",
+          kind: "CASH",
+          currentBalance: new Prisma.Decimal(0),
+          sourceType: "USER_INPUT",
+          userConfirmed: true,
+        },
+      });
+      await this.prisma.auditEvent.create({
+        data: {
+          userId,
+          action: "ACCOUNT_CREATED",
+          meta: JSON.stringify({ accountId: account.id, kind: "CASH" }),
+        },
+      });
+      this.monthFacts.invalidateUser(userId);
+      return account;
+    }
     if (dto.kind !== "BANK") {
-      throw new BadRequestException("כרגע נתמך רק חשבון בנק אחד");
+      throw new BadRequestException("כרגע נתמכים רק חשבון בנק וארנק מזומן");
     }
     const existingBank = await this.prisma.financialAccount.findFirst({
       where: { userId, isActive: true, kind: "BANK" },

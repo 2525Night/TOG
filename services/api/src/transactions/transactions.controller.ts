@@ -13,6 +13,7 @@ import { TransactionsService } from "./transactions.service";
 import {
   CreateTransactionDto,
   UpdateTransactionDto,
+  CashAtmWithdrawalDto,
 } from "./transactions.dto";
 import { JwtAuthGuard } from "../auth/guards";
 import { CurrentUser, AuthUser } from "../auth/current-user.decorator";
@@ -28,6 +29,8 @@ export class TransactionsController {
     @Query("month") month?: string,
     @Query("loanId") loanId?: string,
     @Query("creditCardId") creditCardId?: string,
+    @Query("accountId") accountId?: string,
+    @Query("accountKind") accountKind?: string,
     @Query("limit") limit?: string,
     @Query("before") before?: string,
     @Query("beforeId") beforeId?: string,
@@ -37,6 +40,8 @@ export class TransactionsController {
       month: month || undefined,
       loanId: loanId || undefined,
       creditCardId: creditCardId || undefined,
+      accountId: accountId || undefined,
+      accountKind: accountKind || undefined,
       limit: limit ? Number(limit) : undefined,
       before: before || undefined,
       beforeId: beforeId || undefined,
@@ -47,6 +52,15 @@ export class TransactionsController {
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateTransactionDto) {
     return this.transactions.create(user.ledgerUserId, dto);
+  }
+
+  /** ATM / cash withdrawal: debit checking + credit pocket cash. */
+  @Post("cash-atm-withdrawal")
+  cashAtmWithdrawal(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CashAtmWithdrawalDto,
+  ) {
+    return this.transactions.recordCashAtmWithdrawal(user.ledgerUserId, dto);
   }
 
   @Post("bulk-by-merchant")

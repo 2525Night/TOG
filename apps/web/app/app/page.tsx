@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, formatIls } from "@/lib/api";
 import { CategoryBars, BudgetPie } from "@/components/Charts";
-import { PeriodBar, useSelectedMonth, labelMonthHe } from "@/components/PeriodBar";
+import { PeriodBar, useSelectedMonth, labelMonthHe, appHref } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Pulse } from "@/components/Pulse";
 import { FeelRow } from "@/components/FeelRow";
@@ -185,10 +185,45 @@ function DashboardInner() {
     Record<string, { etaMonth: string | null; pace: string | null }>
   >({});
   const [householdLinked, setHouseholdLinked] = useState(false);
+  const [cashPocket, setCashPocket] = useState<{
+    balance: number;
+    todayOut: number;
+  } | null>(null);
 
   async function load() {
     const s = await api<Summary>(`/dashboard/summary?month=${month}`);
     setData(s);
+    try {
+      const cashAcc = await api<{ id: string; currentBalance: number | string }>(
+        "/accounts/cash/ensure",
+        { method: "POST", body: "{}" },
+      );
+      const bal = Number(cashAcc.currentBalance) || 0;
+      let todayOut = 0;
+      if (cashAcc.id) {
+        const list = await api<{
+          items: Array<{
+            direction: string;
+            amount: number | string;
+            bookedAt: string;
+          }>;
+        }>(
+          `/transactions?accountId=${encodeURIComponent(cashAcc.id)}&month=${month}&limit=100`,
+        );
+        const todayKey = new Date().toISOString().slice(0, 10);
+        todayOut = (list.items || [])
+          .filter((t) => {
+            if (t.direction !== "EXPENSE") return false;
+            const d = new Date(t.bookedAt);
+            const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            return k === todayKey;
+          })
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+      }
+      setCashPocket({ balance: bal, todayOut });
+    } catch {
+      setCashPocket(null);
+    }
     try {
       const hs = await api<{ linked?: boolean; role?: string }>(
         "/household/status",
@@ -495,6 +530,34 @@ function DashboardInner() {
                       : "תזרים יציב"}
               </span>
             </div>
+            {cashPocket ? (
+              <Link
+                href={appHref("/app/cash", month)}
+                className="card"
+                data-testid="home-cash-pocket"
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  textDecoration: "none",
+                  color: "inherit",
+                  marginTop: "0.35rem",
+                }}
+              >
+                <span>
+                  <strong style={{ display: "block" }}>מזומן בכיס</strong>
+                  <span className="muted" style={{ fontSize: "0.85rem" }}>
+                    {cashPocket.todayOut > 0
+                      ? `היום −${formatIls(cashPocket.todayOut)} · פתח יומן כיס`
+                      : "פתח יומן כיס"}
+                  </span>
+                </span>
+                <strong style={{ fontSize: "1.15rem" }}>
+                  {formatIls(cashPocket.balance)}
+                </strong>
+              </Link>
+            ) : null}
             <section
               className="card"
               aria-label="נשאר השבוע"

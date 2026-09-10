@@ -9,6 +9,7 @@ import { appHref, useSelectedMonth } from "@/components/PeriodBar";
 const links = [
   { href: "/app", label: "תמונת מצב", ico: "◎" },
   { href: "/app/money", label: "תנועות", ico: "⇄" },
+  { href: "/app/cash", label: "מעקב מזומן", ico: "₪" },
   { href: "/app/reports", label: "מאזן", ico: "▣" },
   { href: "/app/debts", label: "אשראי והלוואות", ico: "◇" },
   { href: "/app/goals", label: "יעדים", ico: "○" },

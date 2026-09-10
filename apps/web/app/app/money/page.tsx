@@ -42,6 +42,7 @@ type Tx = {
   note?: string | null;
   merchantNorm?: string | null;
   bookedAt: string;
+  sourceReference?: string | null;
   economicRole?: string;
   loanId?: string | null;
   creditCardId?: string | null;
@@ -1581,6 +1582,27 @@ function MoneyInner() {
           <>
             <span className="tx-dense-desc" title={t.description || ""}>
               {t.description || "—"}
+              {(t.sourceReference?.startsWith("cash-atm:") ||
+                /משיכת\s*מזומן|כספומט/i.test(t.description || "")) && (
+                <>
+                  <br />
+                  <Link
+                    className="muted"
+                    href={
+                      t.sourceReference?.startsWith("cash-atm:")
+                        ? appHref(
+                            `/app/cash?ref=${encodeURIComponent(t.sourceReference)}`,
+                            month,
+                          )
+                        : appHref("/app/cash", month)
+                    }
+                    style={{ fontSize: "0.78rem" }}
+                    data-testid="money-cash-link"
+                  >
+                    מזומן · יומן כיס
+                  </Link>
+                </>
+              )}
               {t.loan && (
                 <>
                   <br />
