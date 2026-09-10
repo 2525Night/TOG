@@ -85,3 +85,16 @@ export class UpdateTransactionDto {
   @IsString()
   installmentPlanId?: string | null;
 }
+
+export class CashAtmWithdrawalDto {
+  @IsNumber()
+  @Min(0.01)
+  amount!: number;
+
+  @IsDateString()
+  bookedAt!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}

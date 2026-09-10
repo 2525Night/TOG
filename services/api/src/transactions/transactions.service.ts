@@ -57,6 +57,25 @@ export class TransactionsService {
     return created.id;
   }
 
+  private async ensureCashAccountId(userId: string) {
+    const cash = await this.prisma.financialAccount.findFirst({
+      where: { userId, isActive: true, kind: "CASH" },
+      orderBy: { createdAt: "asc" },
+    });
+    if (cash) return cash.id;
+    const created = await this.prisma.financialAccount.create({
+      data: {
+        userId,
+        name: "מזומן בכיס",
+        kind: "CASH",
+        currentBalance: new Prisma.Decimal(0),
+        sourceType: "USER_INPUT",
+        userConfirmed: true,
+      },
+    });
+    return created.id;
+  }
+
   private async assertLinks(
     userId: string,
     opts: {
@@ -164,6 +183,8 @@ export class TransactionsService {
       month?: string;
       loanId?: string;
       creditCardId?: string;
+      accountId?: string;
+      accountKind?: string;
       limit?: number;
       before?: string;
       beforeId?: string;
@@ -183,6 +204,11 @@ export class TransactionsService {
     const where: Prisma.TransactionWhereInput = { userId };
     if (opts?.loanId) where.loanId = opts.loanId;
     if (opts?.creditCardId) where.creditCardId = opts.creditCardId;
+    if (opts?.accountId) where.accountId = opts.accountId;
+    const kind = opts?.accountKind?.trim().toUpperCase();
+    if (kind === "CASH" || kind === "BANK") {
+      where.account = { kind };
+    }
 
     let monthStart: Date | null = null;
     let monthEnd: Date | null = null;
@@ -381,6 +407,91 @@ export class TransactionsService {
 
     this.monthFacts.invalidateUser(userId);
     return tx;
+  }
+
+  /**
+   * Pocket journal ATM flow: checking EXPENSE + cash INCOME, linked by sourceReference.
+   * TRANSFER direction does not move balances today — use dual STANDARD txs instead.
+   */
+  async recordCashAtmWithdrawal(
+    userId: string,
+    body: { amount: number; bookedAt: string; description?: string },
+  ) {
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount < 0.01) {
+      throw new BadRequestException("סכום משיכה לא תקין");
+    }
+    const bookedAt = new Date(body.bookedAt);
+    if (Number.isNaN(bookedAt.getTime())) {
+      throw new BadRequestException("תאריך לא תקין");
+    }
+    const description =
+      body.description?.trim() || "משיכת מזומן · כספומט";
+    const bankId = await this.ensureCheckingAccountId(userId);
+    const cashId = await this.ensureCashAccountId(userId);
+    const pairKey = `cash-atm:${Date.now().toString(36)}:${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+
+    const result = await this.prisma.$transaction(async (db) => {
+      const bankTx = await db.transaction.create({
+        data: {
+          userId,
+          accountId: bankId,
+          direction: "EXPENSE",
+          amount: new Prisma.Decimal(amount),
+          categoryKey: "banking",
+          description,
+          bookedAt,
+          sourceType: SourceType.USER_INPUT,
+          sourceReference: pairKey,
+          userConfirmed: true,
+          economicRole: EconomicRole.STANDARD,
+        },
+      });
+      await db.financialAccount.update({
+        where: { id: bankId },
+        data: { currentBalance: { increment: -amount } },
+      });
+
+      const cashTx = await db.transaction.create({
+        data: {
+          userId,
+          accountId: cashId,
+          direction: "INCOME",
+          amount: new Prisma.Decimal(amount),
+          categoryKey: "other",
+          description,
+          bookedAt,
+          sourceType: SourceType.USER_INPUT,
+          sourceReference: pairKey,
+          userConfirmed: true,
+          economicRole: EconomicRole.STANDARD,
+        },
+      });
+      await db.financialAccount.update({
+        where: { id: cashId },
+        data: { currentBalance: { increment: amount } },
+      });
+
+      await db.auditEvent.create({
+        data: {
+          userId,
+          action: "CASH_ATM_WITHDRAWAL",
+          meta: JSON.stringify({
+            pairKey,
+            bankTransactionId: bankTx.id,
+            cashTransactionId: cashTx.id,
+            amount,
+          }),
+        },
+      });
+
+      return { bankTx, cashTx, pairKey };
+    });
+
+    this.monthFacts.invalidateUser(userId);
+    return result;
   }
 
   async update(

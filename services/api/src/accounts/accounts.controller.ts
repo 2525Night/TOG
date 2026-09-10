@@ -22,6 +22,12 @@ export class AccountsController {
     return this.accounts.list(user.ledgerUserId);
   }
 
+  /** Ensure pocket-cash account exists; returns the CASH wallet. */
+  @Post("cash/ensure")
+  ensureCash(@CurrentUser() user: AuthUser) {
+    return this.accounts.ensureCashAccount(user.ledgerUserId);
+  }
+
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateAccountDto) {
     return this.accounts.create(user.ledgerUserId, dto);
