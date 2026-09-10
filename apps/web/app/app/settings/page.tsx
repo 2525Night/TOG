@@ -243,6 +243,17 @@ function SettingsInner() {
         </section>
       )}
 
+      <section className="card" aria-label="הורדת אפליקציה">
+        <p className="debts-totals-eyebrow">אנדרואיד</p>
+        <h2 style={{ marginTop: 0 }}>התקנה לטלפון</h2>
+        <p className="muted">
+          הורידו את קובץ ההתקנה (APK) לטלפון אנדרואיד — כולל האייקון המעודכן.
+        </p>
+        <a className="btn" href="/download">
+          להורדת האפליקציה
+        </a>
+      </section>
+
       <p className="muted" style={{ fontSize: "0.9rem" }}>
         חודש פעיל בהגדרות: {month} — לא משפיע על השיתוף.
       </p>
