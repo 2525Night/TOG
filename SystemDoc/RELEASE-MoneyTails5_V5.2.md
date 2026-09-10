@@ -15,10 +15,11 @@
 
 | שירות | URL | Deployment |
 |--------|-----|------------|
-| Web | https://moneytail-web.vercel.app | (מתעדכן בפריסת יומן כיס) |
-| API | https://moneytail-api.vercel.app | (מתעדכן בפריסת יומן כיס) |
+| Web | https://moneytail-web.vercel.app | `dpl_2RzEsX2gReP1UNpormDdFgGUakpN` READY · `/app/cash` |
+| API | https://moneytail-api.vercel.app | `dpl_7YB8Sk4y536RJ8jMH3NTHTWYwZda` READY · `POST /accounts/cash/ensure` |
 
-PR בסיס: https://github.com/2525Night/TOG/pull/4
+PR יומן כיס: https://github.com/2525Night/TOG/pull/5 (מוזג ל־`main` → `51fb829`)  
+PR בסיס V5.2: https://github.com/2525Night/TOG/pull/4
 
 ## Android
 
