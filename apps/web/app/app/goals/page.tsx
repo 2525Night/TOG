@@ -1785,6 +1785,7 @@ function GoalsInner() {
                       type="button"
                       className="linkish muted"
                       disabled={busy}
+                      aria-label={`הסרת יעד ${g.title}`}
                       onClick={() => void removeGoal(g)}
                     >
                       הסרה

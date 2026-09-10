@@ -1797,7 +1797,7 @@ function MoneyInner() {
                     : budget.fixed.actualTotal,
                 )}
                 {budget.fixed.basisForLeftover === "expected" ? " (צפוי)" : ""} ·
-                משתנה {formatIls(budget.flexible.actualTotal)}
+                גמיש {formatIls(budget.flexible.actualTotal)}
                 {(budget.allocatedToGoals > 0 || monthToGoals > 0)
                   ? ` · ליעדים ${formatIls(budget.allocatedToGoals || monthToGoals)}`
                   : ""}

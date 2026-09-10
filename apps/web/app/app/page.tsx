@@ -460,9 +460,9 @@ function DashboardInner() {
               </span>
               <span className={`badge ${riskClass}`}>
                 {data.overdraftRisk.alreadyNegative
-                  ? "מינוס פעיל"
+                  ? "במינוס — אפשר לנהל"
                   : data.overdraftRisk.level === "high"
-                    ? "תזרים דחוק"
+                    ? "תזרים דחוק — בלי שיפוט"
                     : data.overdraftRisk.level === "medium"
                       ? "נזילות דקה"
                       : "תזרים יציב"}
@@ -494,7 +494,7 @@ function DashboardInner() {
       <Pulse
         tone={availableNow < 0 ? "hold" : sparseSetup ? "boost" : data.netMtd >= 0 ? "win" : "boost"}
         mark={availableNow < 0 ? "!" : sparseSetup ? "→" : data.netMtd >= 0 ? "✓" : "♥"}
-        label={sparseSetup ? "הצעד הבא" : "ליווי רגשי"}
+        label="הצעד הבא"
         title={
           availableNow < 0
             ? "יש פער בין יתרה להתחייבויות"
@@ -504,17 +504,21 @@ function DashboardInner() {
                 ? "החודש עובד לטובתך"
                 : "אתה לא לבד מול המספרים"
         }
-        text={
-          availableNow < 0
-            ? data.overdraftRisk.messageHe ||
-              "הזמין בפועל שלילי כי שמור לתשלומים גדול מהיתרה — זה אות לניהול, לא גזר דין."
-            : sparseSetup
-              ? "הוסיפו קנייה או הכנסה אחת מהחיים האמיתיים — התמונה תתחדד מיד."
-              : data.overdraftRisk.messageHe ||
-                (data.netMtd >= 0
-                  ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
-                  : "גם אם החיץ קצר, התמונה כאן כדי להרגיע ולכוון — לא כדי לשפוט.")
-        }
+        text={(() => {
+          const core =
+            availableNow < 0
+              ? data.overdraftRisk.messageHe ||
+                "הזמין בפועל שלילי כי שמור לתשלומים גדול מהיתרה — זה אות לניהול, לא גזר דין."
+              : sparseSetup
+                ? "הוסיפו קנייה או הכנסה אחת מהחיים האמיתיים — התמונה תתחדד מיד."
+                : data.overdraftRisk.messageHe ||
+                  (data.netMtd >= 0
+                    ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
+                    : "גם אם הרזרבה קצרה, התמונה כאן כדי להרגיע ולכוון.");
+          return /בלי שיפוט|אפשר לנהל|לא גזר דין/.test(core)
+            ? core
+            : `${core} בלי שיפוט — אפשר לנהל.`;
+        })()}
       />
 
       <WinStrip
@@ -535,7 +539,7 @@ function DashboardInner() {
           ...(data.emergencyCushion
             ? [
                 {
-                  label: "חיץ להפתעות",
+                  label: "רזרבה להפתעות",
                   value:
                     data.emergencyCushion.progressPct < 1
                       ? `יעד ${formatIls(data.emergencyCushion.targetAmount)}`
@@ -553,33 +557,33 @@ function DashboardInner() {
         ]}
       />
 
-      {!sparseSetup && (
       <FeelRow
         items={[
           {
             emo: "להבין",
             title: "מה המספר אומר",
-            text: "«זמין בפועל» הוא מה שנשאר אחרי שתשלומים ידועים כבר שמורים בצד.",
+            text: "«זמין בפועל» הוא מה שנשאר אחרי שתשלומים ידועים כבר שמורים בצד — שונה מיתרה בחשבון.",
           },
           {
             emo: "להרגיש",
             title: "מה מותר להרגיש",
             text:
               availableNow < 0
-                ? "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל."
+                ? "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל."
                 : data.netMtd >= 0
-                  ? "הקלה. יש כיוון. מותר לגאווה קטנה בלי להתעלם ממה שעוד חסר."
-                  : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». יש תמונה, אפשר לנהל.",
+                  ? "הקלה. יש כיוון. מותר לגאווה קטנה — בלי שיפוט, ואפשר לנהל גם את מה שעוד חסר."
+                  : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל.",
           },
           {
             emo: "לעשות",
             title: "צעד אחד בלבד",
-            text: "בחרו פעולה קטנה אחת מהרשימה למטה — לא לתקן הכול היום.",
+            text: sparseSetup
+              ? "הוסיפו תנועה אחת מהחיים האמיתיים — זה הצעד הבא."
+              : "בחרו פעולה קטנה אחת מהרשימה למטה — לא לתקן הכול היום.",
             hold: true,
           },
         ]}
       />
-      )}
 
       {!sparseSetup &&
         (data.dataGaps || []).map((g) => (

@@ -39,7 +39,7 @@ export function projectLiquidity(
       endBalanceProjected,
       level: "high",
       alreadyNegative: true,
-      messageHe: `בחשבון יש מינוס של כ־₪${round0(Math.abs(input.checkingBalanceNow)).toLocaleString("he-IL")}. כדאי לייצב את התזרים לפני הוצאות חדשות.`,
+      messageHe: `בחשבון יש מינוס של כ־₪${round0(Math.abs(input.checkingBalanceNow)).toLocaleString("he-IL")}. כדאי לייצב את התזרים לפני הוצאות חדשות — בלי שיפוט, אפשר לנהל.`,
     };
   }
 
@@ -59,7 +59,7 @@ export function projectLiquidity(
       endBalanceProjected: base,
       level: "high",
       alreadyNegative: false,
-      messageHe: `אחרי שמור לתשלומים, הזמין בפועל כרגע במינוס של כ־₪${round0(Math.abs(base)).toLocaleString("he-IL")} — כדאי לעדכן תנועות או להקטין התחייבויות.`,
+      messageHe: `אחרי שמור לתשלומים, הזמין בפועל כרגע במינוס של כ־₪${round0(Math.abs(base)).toLocaleString("he-IL")} — אות לניהול, לא גזר דין. בלי שיפוט, אפשר לנהל.`,
     };
   }
 

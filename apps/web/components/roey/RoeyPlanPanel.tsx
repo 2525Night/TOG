@@ -310,7 +310,7 @@ export function RoeyPlanPanel() {
               }
             >
               <option value="STABILITY">יציבות</option>
-              <option value="DEBT_REDUCTION">צמצום חובות</option>
+              <option value="DEBT_REDUCTION">צמצום אשראי והלוואות</option>
               <option value="EMERGENCY_BUFFER">כרית ביטחון</option>
               <option value="SAVING_GOAL">יעד חיסכון</option>
               <option value="CASHFLOW">שיפור תזרים</option>

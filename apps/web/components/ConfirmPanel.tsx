@@ -50,10 +50,14 @@ export function ConfirmPanel({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descId}
+      data-testid="confirm-panel"
     >
       <h2 id={titleId} style={{ marginTop: 0 }}>
         {title}
       </h2>
+      <p className="mt-confirm-reassure muted" style={{ marginTop: 0, marginBottom: "0.35rem", fontSize: "0.9rem" }}>
+        אפשר לבטל — שום דבר לא משתנה לפני שתאשרו.
+      </p>
       <div id={descId} className="muted" style={{ marginBottom: "0.75rem" }}>
         {typeof message === "string" ? <p style={{ margin: 0 }}>{message}</p> : message}
       </div>
