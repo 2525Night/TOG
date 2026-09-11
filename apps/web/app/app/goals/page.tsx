@@ -19,11 +19,11 @@ import {
   appHref,
 } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
-import { Pulse } from "@/components/Pulse";
-import { FeelRow } from "@/components/FeelRow";
-import { WinStrip } from "@/components/WinStrip";
+import { PageDock } from "@/components/PageDock";
 import { GoalsPoolPie } from "@/components/Charts";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
+
+type GoalsView = "list" | "allocate" | "cushion";
 
 type Forecast = {
   remaining: number;
@@ -288,6 +288,7 @@ function GoalsInner() {
   const [editTarget, setEditTarget] = useState("");
   const [editCurrent, setEditCurrent] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [view, setView] = useState<GoalsView>("list");
 
   const sortedGoals = useMemo(() => {
     return [...goals].sort((a, b) => {
@@ -362,6 +363,7 @@ function GoalsInner() {
     setReserveTarget(String(suggestedReserveAmount()));
     setShowReserveWizard(true);
     setShowCreate(false);
+    setView("cushion");
     setError(null);
     setMsg(null);
   }
@@ -391,6 +393,7 @@ function GoalsInner() {
       if (id && (nextPool?.free ?? 0) > 0) {
         setAllocateOpenId(id);
         setMoreOpenId(null);
+        setView("allocate");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -508,7 +511,10 @@ function GoalsInner() {
       const { goals: list, pool: nextPool } = await refresh();
       if (asReserve) {
         const id = created?.id || list.find((g) => g.kind === "EMERGENCY")?.id;
-        if (id && (nextPool?.free ?? 0) > 0) setAllocateOpenId(id);
+        if (id && (nextPool?.free ?? 0) > 0) {
+          setAllocateOpenId(id);
+          setView("allocate");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1120,23 +1126,25 @@ function GoalsInner() {
   ) : null;
 
   return (
-    <div className="grid goals-page" style={{ gap: "0.85rem" }}>
+    <div className="grid goals-page has-page-dock" style={{ gap: "0.85rem" }}>
       <PageHeader
         kicker="יעדים · שמירה על אש קטנה"
         title="המטרה גדולה. הצעד קטן. ככה לא מאבדים מוטיבציה."
         subtitle="יעדים שבורים לצעדים שאפשר לנשום איתם. אם השבוע קשה — מצמצמים את הצעד, לא זורקים את הדרך."
         actions={
-          <button
-            className="btn secondary"
-            type="button"
-            onClick={() => {
-              setShowCreate((v) => !v);
-              setShowReserveWizard(false);
-              setCreateAsReserve(false);
-            }}
-          >
-            {showCreate ? "סגור" : "יעד חדש"}
-          </button>
+          view === "list" ? (
+            <button
+              className="btn secondary"
+              type="button"
+              onClick={() => {
+                setShowCreate((v) => !v);
+                setShowReserveWizard(false);
+                setCreateAsReserve(false);
+              }}
+            >
+              {showCreate ? "סגור" : "יעד חדש"}
+            </button>
+          ) : undefined
         }
       />
 
@@ -1170,7 +1178,7 @@ function GoalsInner() {
         </p>
       )}
 
-      {showCreate && (
+      {view === "list" && showCreate && (
         <form
           ref={createFormRef}
           className="card compact-form goal-create-form"
@@ -1267,9 +1275,23 @@ function GoalsInner() {
         </form>
       )}
 
-      {pool && (
+      {view === "list" && !hasEmergency && showReserveCta && (
+        <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => openReserveWizard()}
+          >
+            רזרבה להפתעות
+          </button>
+          {" — "}
+          סכום שמפרידים מהשוטף להגנה מפני הפתעות
+        </p>
+      )}
+
+      {view === "allocate" && pool && (
         <section className="goals-totals" aria-label="פנוי להקצאה">
-          <div className="clarity-answer" style={{ paddingBottom: "0.25rem" }}>
+          <div className="clarity-answer void-hero" style={{ paddingBottom: "0.25rem" }}>
             <span className="clarity-answer-label">
               פנוי להקצאה · {pool.labelHe}
             </span>
@@ -1339,53 +1361,7 @@ function GoalsInner() {
         </section>
       )}
 
-      <Pulse
-        tone={(pool?.free ?? 0) > 0 ? "boost" : "hold"}
-        mark={(pool?.free ?? 0) > 0 ? "→" : "♥"}
-        label="עידוד להתמדה"
-        title={
-          (pool?.free ?? 0) > 0
-            ? "יש מה להקצות — גם צעד קטן נספר"
-            : "אין פנוי כרגע — והמסלול עדיין קיים"
-        }
-        text={
-          (pool?.free ?? 0) > 0
-            ? "לא צריך לקפוץ ל־100%. הקצאה שנוח לכם שומרת על מוטיבציה."
-            : "כשאין פנוי — מותר לנוח. היעדים מחכים בלי שיפוט."
-        }
-      />
-
-      {pool && (
-        <WinStrip
-          items={[
-            { label: "פנוי", value: formatIls(pool.free) },
-            { label: "הוקצה", value: formatIls(pool.allocated) },
-          ]}
-        />
-      )}
-
-      <FeelRow
-        items={[
-          {
-            emo: "להבין",
-            title: "למה הפנוי חשוב",
-            text: "מה שנשאר אחרי התחייבויות — זה מרחב בחירה. המוח אוהב לראות שיש כיוון.",
-          },
-          {
-            emo: "להרגיש",
-            title: "מה לשמור",
-            text: "תקווה ריאלית. לא הבטחות מתוקות — תחושה שיש מסלול שאתם עומדים בו.",
-          },
-          {
-            emo: "לעשות",
-            title: "אם נשברת השבוע",
-            text: "אל תאפסו יעד. הקטינו את הצעד. חזרה קטנה מחר עדיפה על היעלמות.",
-            hold: true,
-          },
-        ]}
-      />
-
-      {!hasEmergency && showReserveCta && !showReserveWizard && (
+      {view === "cushion" && !hasEmergency && showReserveCta && !showReserveWizard && (
         <section className="card goals-cushion-cta">
           <div>
             <strong>רזרבה להפתעות</strong>
@@ -1404,7 +1380,7 @@ function GoalsInner() {
         </section>
       )}
 
-      {showReserveWizard && !hasEmergency && (
+      {view === "cushion" && showReserveWizard && !hasEmergency && (
         <form
           className="debt-add-panel compact-form goals-reserve-wizard"
           onSubmit={(e) => {
@@ -1468,7 +1444,10 @@ function GoalsInner() {
             <button
               type="button"
               className="btn"
-              onClick={() => setShowCreate(true)}
+              onClick={() => {
+                setView("list");
+                setShowCreate(true);
+              }}
             >
               יעד חדש
             </button>
@@ -1863,6 +1842,17 @@ function GoalsInner() {
           );
         })}
       </div>
+
+      <PageDock
+        ariaLabel="מצבי יעדים"
+        value={view}
+        onChange={(id) => setView(id as GoalsView)}
+        items={[
+          { id: "list", label: "יעדים" },
+          { id: "allocate", label: "הקצאה" },
+          { id: "cushion", label: "כרית" },
+        ]}
+      />
     </div>
   );
 }

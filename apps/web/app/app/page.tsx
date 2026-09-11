@@ -5,7 +5,7 @@ import Link from "next/link";
 import { api, formatIls } from "@/lib/api";
 import { CategoryBars, BudgetPie } from "@/components/Charts";
 import { PeriodBar, useSelectedMonth, labelMonthHe, appHref } from "@/components/PeriodBar";
-import { PageHeader } from "@/components/PageHeader";
+import { PageHero } from "@/components/PageHero";
 import { Pulse } from "@/components/Pulse";
 import { FeelRow } from "@/components/FeelRow";
 import { WinStrip } from "@/components/WinStrip";
@@ -376,23 +376,7 @@ function DashboardInner() {
     data.availableBalance;
 
   return (
-    <div className="grid" style={{ gap: "0.85rem" }}>
-      <PageHeader
-        kicker="תמונת מצב"
-        title="המצב שלך — בקצרה"
-        subtitle={
-          sparseSetup ? (
-            <div>
-              התחלנו מהמספרים שהזנתם — עכשיו נדייק יחד עם תנועות אמיתיות.
-            </div>
-          ) : data.narrativeHe ? (
-            <div>{data.narrativeHe}</div>
-          ) : (
-            <div>מבט רגוע על החודש</div>
-          )
-        }
-      />
-
+    <div className="grid home-hybrid" style={{ gap: "0.85rem" }}>
       <PeriodBar
         income={incomeForBar}
         expense={expenseForBar}
@@ -455,6 +439,27 @@ function DashboardInner() {
         const monthPool =
           leftoverBar != null && Number.isFinite(leftoverBar) ? leftoverBar : z;
         const weeklyRemain = Math.round((monthPool / weeksLeft) * 100) / 100;
+        const moodLine =
+          data.overdraftRisk.alreadyNegative
+            ? "במינוס — אפשר לנהל"
+            : data.overdraftRisk.level === "high"
+              ? "תזרים דחוק — בלי שיפוט"
+              : data.overdraftRisk.level === "medium"
+                ? "נזילות דקה"
+                : "תזרים יציב";
+        const answerLine = showPartialTrust
+          ? "מחושב ממה שרשום במערכת — בדקו שהיתרה והתחייבויות מעודכנים"
+          : sparseSetup
+            ? "יתרה פחות שמור לתשלומים מההקמה — יתחדד עם תנועות"
+            : firstAttention
+              ? firstAttention.conclusionHe ||
+                firstAttention.meaningHe ||
+                firstAttention.titleHe
+              : z < 0
+                ? "מה שבחשבון לא מכסה את מה ששמור לתשלומים"
+                : data.narrativeHe
+                  ? data.narrativeHe
+                  : `${moodLine}. אפשר לנשום — ואז להחליט.`;
         return (
           <>
             {showPartialTrust && (
@@ -471,14 +476,13 @@ function DashboardInner() {
                       ? "יתרת העו״ש 0 ויש סכומים שמורים לתשלומים — המספר למטה משקף פער, לא בהכרח מינוס בבנק."
                       : "בחודש זה כמעט אין הכנסות רשומות מול הוצאות — המאזן עלול להטעות עד שתוסיפו תנועות."}
                 </p>
-                <div className="clarity-actions" style={{ marginTop: "0.65rem", marginBottom: 0 }}>
+                <div
+                  className="clarity-actions"
+                  style={{ marginTop: "0.65rem", marginBottom: 0 }}
+                >
                   <Link
                     className="btn secondary"
-                    href={
-                      checkingMissing
-                        ? `/app/money?month=${month}`
-                        : `/app/money?month=${month}`
-                    }
+                    href={`/app/money?month=${month}`}
                   >
                     {checkingMissing || zeroCheckingWithReserve
                       ? "לעדכון יתרה / תנועות"
@@ -487,219 +491,179 @@ function DashboardInner() {
                 </div>
               </section>
             )}
-            <section className="clarity-answer" aria-label="זמין בפועל">
-              <span className="clarity-answer-label">זמין בפועל</span>
-              <div
-                className={`clarity-answer-value${z < 0 ? " tx-out" : ""}`}
-              >
-                {formatIls(z)}
-              </div>
-              {firstAttention && !showPartialTrust && !sparseSetup ? (
-                <p className="insight-conclusion" style={{ margin: "0.45rem 0 0" }}>
-                  {firstAttention.conclusionHe || firstAttention.titleHe}
-                </p>
-              ) : null}
-              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                {showPartialTrust
-                  ? "מחושב ממה שרשום במערכת — בדקו שהיתרה והתחייבויות מעודכנים"
-                  : sparseSetup
-                    ? "יתרה פחות שמור לתשלומים מההקמה — יתחדד עם תנועות"
-                  : firstAttention
-                    ? firstAttention.meaningHe || firstAttention.bodyHe
-                    : z < 0
-                      ? "מה שבחשבון לא מכסה את מה ששמור לתשלומים"
-                      : data.period && data.period.isCurrentMonth === false
-                        ? "אחרי שמור לתשלומים לפי תאריכי חיוב חיים"
-                        : "אחרי שמור לתשלומים מהיתרה בעו״ש"}
-              </p>
-            </section>
-            <div className="clarity-meaning mt-chips" style={{ display: "flex" }}>
-              <span className="mt-chip">
-                בחשבון <b>{formatIls(liq.checkingBalanceNow)}</b>
-              </span>
-              <span className="mt-chip warn">
-                שמור לתשלומים <b>{formatIls(reserved)}</b>
-              </span>
-              <span className={`badge ${riskClass}`}>
-                {data.overdraftRisk.alreadyNegative
-                  ? "במינוס — אפשר לנהל"
-                  : data.overdraftRisk.level === "high"
-                    ? "תזרים דחוק — בלי שיפוט"
-                    : data.overdraftRisk.level === "medium"
-                      ? "נזילות דקה"
-                      : "תזרים יציב"}
-              </span>
-            </div>
-            {cashPocket ? (
-              <Link
-                href={appHref("/app/cash", month)}
-                className="card"
-                data-testid="home-cash-pocket"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  textDecoration: "none",
-                  color: "inherit",
-                  marginTop: "0.35rem",
-                }}
-              >
-                <span>
-                  <strong style={{ display: "block" }}>מזומן בכיס</strong>
-                  <span className="muted" style={{ fontSize: "0.85rem" }}>
-                    {cashPocket.todayOut > 0
-                      ? `היום −${formatIls(cashPocket.todayOut)} · פתח יומן כיס`
-                      : "פתח יומן כיס"}
-                  </span>
+
+            <section className="home-void" aria-label="זמין בפועל">
+              <PageHero
+                kicker="תמונת מצב · זמין בפועל"
+                amount={z.toLocaleString("he-IL", {
+                  maximumFractionDigits: Math.abs(z) > 0 && Math.abs(z) < 1 ? 2 : 0,
+                })}
+                unit="₪ · אחרי התחייבויות"
+                answer={answerLine}
+                negative={z < 0}
+                size="lg"
+              />
+              <div className="home-void-chips clarity-meaning mt-chips">
+                <span className="mt-chip">
+                  בחשבון <b>{formatIls(liq.checkingBalanceNow)}</b>
                 </span>
-                <strong style={{ fontSize: "1.15rem" }}>
-                  {formatIls(cashPocket.balance)}
-                </strong>
-              </Link>
-            ) : null}
-            <section
-              className="card"
-              aria-label="נשאר השבוע"
-              data-testid="weekly-remain"
-              style={{ marginTop: "0.35rem" }}
-            >
-              <span className="debts-totals-eyebrow">נשאר השבוע</span>
-              <div
-                className={`clarity-answer-value${weeklyRemain < 0 ? " tx-out" : ""}`}
-                style={{ fontSize: "1.55rem" }}
-              >
-                {formatIls(weeklyRemain)}
+                <span className="mt-chip warn">
+                  שמור לתשלומים <b>{formatIls(reserved)}</b>
+                </span>
+                {cashPocket ? (
+                  <Link
+                    href={appHref("/app/cash", month)}
+                    className="mt-chip"
+                    data-testid="home-cash-pocket"
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    מזומן בכיס <b>{formatIls(cashPocket.balance)}</b>
+                    {cashPocket.todayOut > 0
+                      ? ` · היום −${formatIls(cashPocket.todayOut)}`
+                      : ""}
+                  </Link>
+                ) : null}
+                <span className={`badge ${riskClass}`}>{moodLine}</span>
               </div>
-              <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                חלוקה רגועה של{" "}
-                {leftoverBar != null ? "נותר החודש" : "הזמין בפועל"} ל־
-                {weeksLeft} שבועות שנותרו ב־{labelMonthHe(month)}
-                {weeklyRemain >= 0
-                  ? " — יש לכם כיוון ברור לשבוע"
-                  : " — בלי שיפוט, רק כיוון"}
-                {householdLinked ? " · גם לשניים" : ""}.
-              </p>
-            </section>
-            <div className="clarity-actions">
-              {firstAttention && !sparseSetup ? (
-                <Link className="btn" href={firstAttention.href}>
-                  {firstAttention.ctaHe || "לטפל עכשיו"}
-                </Link>
-              ) : (
-                <Link className="btn" href={`/app/money?month=${month}&add=expense`}>
-                  {sparseSetup ? "הוסיפו תנועה ראשונה" : "הוצאה מהירה"}
-                </Link>
-              )}
-              <button
-                type="button"
-                className="btn secondary"
-                aria-expanded={showDetails}
-                onClick={() => setShowDetails((v) => !v)}
+              <p
+                className="home-void-week"
+                data-testid="weekly-remain"
               >
-                {showDetails ? "הסתר פרטים" : "פרטים נוספים"}
-              </button>
-            </div>
+                נשאר השבוע ·{" "}
+                <strong className={weeklyRemain < 0 ? "tx-out" : undefined}>
+                  {formatIls(weeklyRemain)}
+                </strong>
+                {" · "}
+                חלוקה ל־{weeksLeft} שבועות ב־{labelMonthHe(month)}
+                {householdLinked ? " · גם לשניים" : ""}
+              </p>
+              <div className="home-void-actions clarity-actions">
+                {firstAttention && !sparseSetup ? (
+                  <Link className="btn" href={firstAttention.href}>
+                    {firstAttention.ctaHe || "לטפל עכשיו"}
+                  </Link>
+                ) : (
+                  <Link
+                    className="btn"
+                    href={`/app/money?month=${month}&add=expense`}
+                  >
+                    {sparseSetup ? "הוסיפו תנועה ראשונה" : "הוצאה מהירה"}
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  className="btn secondary"
+                  aria-expanded={showDetails}
+                  onClick={() => setShowDetails((v) => !v)}
+                >
+                  {showDetails ? "הסתר פרטים" : "פרטים נוספים"}
+                </button>
+              </div>
+            </section>
           </>
         );
       })()}
 
-      <Pulse
-        tone={availableNow < 0 ? "hold" : sparseSetup ? "boost" : data.netMtd >= 0 ? "win" : "boost"}
-        mark={availableNow < 0 ? "!" : sparseSetup ? "→" : data.netMtd >= 0 ? "✓" : "♥"}
-        label="הצעד הבא"
-        title={
-          availableNow < 0
-            ? "יש פער בין יתרה להתחייבויות"
-            : sparseSetup
-              ? "בסיס טוב — עכשיו נוסיף תנועה אחת"
-              : data.netMtd >= 0
-                ? "החודש עובד לטובתך"
-                : "אתה לא לבד מול המספרים"
-        }
-        text={(() => {
-          const core =
-            availableNow < 0
-              ? data.overdraftRisk.messageHe ||
-                "הזמין בפועל שלילי כי שמור לתשלומים גדול מהיתרה — זה אות לניהול, לא גזר דין."
-              : sparseSetup
-                ? "הוסיפו קנייה או הכנסה אחת מהחיים האמיתיים — התמונה תתחדד מיד."
-                : data.overdraftRisk.messageHe ||
-                  (data.netMtd >= 0
-                    ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
-                    : "גם אם הרזרבה קצרה, התמונה כאן כדי להרגיע ולכוון.");
-          return /בלי שיפוט|אפשר לנהל|לא גזר דין/.test(core)
-            ? core
-            : `${core} בלי שיפוט — אפשר לנהל.`;
-        })()}
-      />
-
-      <WinStrip
-        items={[
-          ...(sparseSetup
-            ? [
-                {
-                  label: "בסיס שהוגדר",
-                  value: formatIls(incomeForBar),
-                },
-              ]
-            : [
-                {
-                  label: "תזרים החודש",
-                  value: `${data.netMtd >= 0 ? "+" : ""}${formatIls(data.netMtd)}`,
-                },
-              ]),
-          ...(data.emergencyCushion
-            ? [
-                {
-                  label: "רזרבה להפתעות",
-                  value:
-                    data.emergencyCushion.progressPct < 1
-                      ? `יעד ${formatIls(data.emergencyCushion.targetAmount)}`
-                      : `${Math.round(data.emergencyCushion.progressPct)}%`,
-                },
-              ]
-            : data.goals[0]
-              ? [
-                  {
-                    label: "יעד מוביל",
-                    value: `${Math.round(data.goals[0].progressPct)}%`,
-                  },
-                ]
-              : []),
-          ...(householdLinked
-            ? [{ label: "שותפים במסע", value: "ביחד" }]
-            : []),
-        ]}
-      />
-
-      <FeelRow
-        items={[
-          {
-            emo: "להבין",
-            title: "מה המספר אומר",
-            text: "«זמין בפועל» הוא מה שנשאר אחרי שתשלומים ידועים כבר שמורים בצד — שונה מיתרה בחשבון.",
-          },
-          {
-            emo: "להרגיש",
-            title: "מה מותר להרגיש",
-            text:
+      {showDetails && (
+        <>
+          <Pulse
+            tone={availableNow < 0 ? "hold" : sparseSetup ? "boost" : data.netMtd >= 0 ? "win" : "boost"}
+            mark={availableNow < 0 ? "!" : sparseSetup ? "→" : data.netMtd >= 0 ? "✓" : "♥"}
+            label="הצעד הבא"
+            title={
               availableNow < 0
-                ? "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל."
-                : data.netMtd >= 0
-                  ? "הקלה. יש כיוון. מותר לגאווה קטנה — בלי שיפוט, ואפשר לנהל גם את מה שעוד חסר."
-                  : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל.",
-          },
-          {
-            emo: "לעשות",
-            title: "צעד אחד בלבד",
-            text: sparseSetup
-              ? "הוסיפו תנועה אחת מהחיים האמיתיים — זה הצעד הבא."
-              : "בחרו פעולה קטנה אחת מהרשימה למטה — לא לתקן הכול היום.",
-            hold: true,
-          },
-        ]}
-      />
+                ? "יש פער בין יתרה להתחייבויות"
+                : sparseSetup
+                  ? "בסיס טוב — עכשיו נוסיף תנועה אחת"
+                  : data.netMtd >= 0
+                    ? "החודש עובד לטובתך"
+                    : "אתה לא לבד מול המספרים"
+            }
+            text={(() => {
+              const core =
+                availableNow < 0
+                  ? data.overdraftRisk.messageHe ||
+                    "הזמין בפועל שלילי כי שמור לתשלומים גדול מהיתרה — זה אות לניהול, לא גזר דין."
+                  : sparseSetup
+                    ? "הוסיפו קנייה או הכנסה אחת מהחיים האמיתיים — התמונה תתחדד מיד."
+                    : data.overdraftRisk.messageHe ||
+                      (data.netMtd >= 0
+                        ? "מותר להרגיש הקלה — ואז לבחור צעד קטן שמחזק את הביטחון."
+                        : "גם אם הרזרבה קצרה, התמונה כאן כדי להרגיע ולכוון.");
+              return /בלי שיפוט|אפשר לנהל|לא גזר דין/.test(core)
+                ? core
+                : `${core} בלי שיפוט — אפשר לנהל.`;
+            })()}
+          />
+
+          <WinStrip
+            items={[
+              ...(sparseSetup
+                ? [
+                    {
+                      label: "בסיס שהוגדר",
+                      value: formatIls(incomeForBar),
+                    },
+                  ]
+                : [
+                    {
+                      label: "תזרים החודש",
+                      value: `${data.netMtd >= 0 ? "+" : ""}${formatIls(data.netMtd)}`,
+                    },
+                  ]),
+              ...(data.emergencyCushion
+                ? [
+                    {
+                      label: "רזרבה להפתעות",
+                      value:
+                        data.emergencyCushion.progressPct < 1
+                          ? `יעד ${formatIls(data.emergencyCushion.targetAmount)}`
+                          : `${Math.round(data.emergencyCushion.progressPct)}%`,
+                    },
+                  ]
+                : data.goals[0]
+                  ? [
+                      {
+                        label: "יעד מוביל",
+                        value: `${Math.round(data.goals[0].progressPct)}%`,
+                      },
+                    ]
+                  : []),
+              ...(householdLinked
+                ? [{ label: "שותפים במסע", value: "ביחד" }]
+                : []),
+            ]}
+          />
+
+          <FeelRow
+            items={[
+              {
+                emo: "להבין",
+                title: "מה המספר אומר",
+                text: "«זמין בפועל» הוא מה שנשאר אחרי שתשלומים ידועים כבר שמורים בצד — שונה מיתרה בחשבון.",
+              },
+              {
+                emo: "להרגיש",
+                title: "מה מותר להרגיש",
+                text:
+                  availableNow < 0
+                    ? "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל."
+                    : data.netMtd >= 0
+                      ? "הקלה. יש כיוון. מותר לגאווה קטנה — בלי שיפוט, ואפשר לנהל גם את מה שעוד חסר."
+                      : "לחץ אפשרי — והוא לא אומר שאתם «נכשלים». בלי שיפוט: יש תמונה, אפשר לנהל.",
+              },
+              {
+                emo: "לעשות",
+                title: "צעד אחד בלבד",
+                text: sparseSetup
+                  ? "הוסיפו תנועה אחת מהחיים האמיתיים — זה הצעד הבא."
+                  : "בחרו פעולה קטנה אחת מהרשימה למטה — לא לתקן הכול היום.",
+                hold: true,
+              },
+            ]}
+          />
+        </>
+      )}
 
       {!sparseSetup &&
         (data.dataGaps || []).map((g) => (

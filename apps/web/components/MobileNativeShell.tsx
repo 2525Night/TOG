@@ -77,6 +77,39 @@ export function MobileNativeShell() {
     };
   }, []);
 
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const sync = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      const editing =
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement.matches("input, textarea, [contenteditable='true']");
+      const inset =
+        editing && viewport
+          ? Math.max(0, window.innerHeight - viewport.height - offsetTop)
+          : 0;
+      const root = document.documentElement;
+      root.style.setProperty("--app-vvh", `${height}px`);
+      root.style.setProperty("--vv-offset-top", `${offsetTop}px`);
+      root.style.setProperty("--keyboard-inset", `${inset}px`);
+      root.classList.toggle("keyboard-open", inset > 80);
+    };
+    sync();
+    viewport?.addEventListener("resize", sync);
+    viewport?.addEventListener("scroll", sync);
+    window.addEventListener("resize", sync);
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", sync);
+    return () => {
+      viewport?.removeEventListener("resize", sync);
+      viewport?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", sync);
+    };
+  }, []);
+
   // Scroll to top only on real page changes — never on query/filter clicks.
   useEffect(() => {
     const prev = prevPathRef.current;

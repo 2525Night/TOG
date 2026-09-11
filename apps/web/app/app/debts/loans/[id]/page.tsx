@@ -135,7 +135,7 @@ function LoanDetailInner() {
   });
 
   return (
-    <div className="stack debts-page">
+    <div className="stack debts-page has-page-dock">
       <PageHeader
         kicker="הלוואה"
         title={loan.name}
@@ -161,7 +161,6 @@ function LoanDetailInner() {
                   : "רשום תשלום"}
           </button>
         }
-        footer={<DebtsSubNav />}
       />
       <PeriodBar />
       <Link href={appHref("/app/debts/loans", month)} className="muted">
@@ -438,6 +437,7 @@ function LoanDetailInner() {
           </section>
         </div>
       )}
+      <DebtsSubNav />
     </div>
   );
 }

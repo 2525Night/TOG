@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/AppSidebar";
 import { BrandLockup } from "@/components/BrandLockup";
 import { RoeyLauncher } from "@/components/RoeyLauncher";
+import { ToastProvider } from "@/components/ToastProvider";
 import {
   api,
   getToken,
@@ -138,49 +139,51 @@ export default function AppLayout({
   }
 
   return (
-    <div className="app-shell">
-      <span className="app-orb a" aria-hidden="true" />
-      <span className="app-orb b" aria-hidden="true" />
-      <a className="skip-link" href="#main-content">
-        דלגו לתוכן
-      </a>
-      <Suspense fallback={null}>
-        <AppSidebar
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          hideNav={isOnboarding}
-        />
-      </Suspense>
-      <div className="app-main">
-        <div className="mobile-topbar">
-          <div className="brand">
-            <BrandLockup size="sm" />
+    <ToastProvider>
+      <div className="app-shell">
+        <span className="app-orb a" aria-hidden="true" />
+        <span className="app-orb b" aria-hidden="true" />
+        <a className="skip-link" href="#main-content">
+          דלגו לתוכן
+        </a>
+        <Suspense fallback={null}>
+          <AppSidebar
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            hideNav={isOnboarding}
+          />
+        </Suspense>
+        <div className="app-main">
+          <div className="mobile-topbar">
+            <div className="brand">
+              <BrandLockup size="sm" />
+            </div>
+            <button
+              className="mobile-menu-btn"
+              type="button"
+              aria-label="תפריט ראשי"
+              aria-expanded={menuOpen}
+              aria-controls="app-sidebar"
+              onClick={() => setMenuOpen(true)}
+            >
+              <span className="mobile-menu-btn__bars" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className="mobile-menu-btn__label">תפריט</span>
+            </button>
           </div>
-          <button
-            className="mobile-menu-btn"
-            type="button"
-            aria-label="תפריט ראשי"
-            aria-expanded={menuOpen}
-            aria-controls="app-sidebar"
-            onClick={() => setMenuOpen(true)}
+          <div
+            className="container screen-enter"
+            id="main-content"
+            key={pathname}
           >
-            <span className="mobile-menu-btn__bars" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            <span className="mobile-menu-btn__label">תפריט</span>
-          </button>
+            {children}
+          </div>
         </div>
-        <div
-          className="container screen-enter"
-          id="main-content"
-          key={pathname}
-        >
-          {children}
-        </div>
+        <RoeyLauncher />
       </div>
-      <RoeyLauncher />
-    </div>
+    </ToastProvider>
   );
 }

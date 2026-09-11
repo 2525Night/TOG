@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { setToken } from "@/lib/api";
 import { BrandLockup } from "@/components/BrandLockup";
 import { appHref, useSelectedMonth } from "@/components/PeriodBar";
+import { useNotifyOptional } from "@/components/ToastProvider";
 
 const links = [
   { href: "/app", label: "תמונת מצב", ico: "◎" },
@@ -14,6 +15,7 @@ const links = [
   { href: "/app/debts", label: "אשראי והלוואות", ico: "◇" },
   { href: "/app/goals", label: "יעדים", ico: "○" },
   { href: "/app/roey", label: "Roey", ico: "✦" },
+  { href: "/app/service", label: "התראות", ico: "◉" },
   { href: "/app/settings", label: "הגדרות", ico: "⚙" },
 ];
 
@@ -27,6 +29,8 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const month = useSelectedMonth();
+  const toastCtx = useNotifyOptional();
+  const unread = toastCtx?.unreadAlerts ?? 0;
 
   return (
     <>
@@ -73,6 +77,11 @@ export function AppSidebar({ open, onClose, hideNav }: AppSidebarProps) {
                     {l.ico}
                   </span>
                   <span className="nav-label">{l.label}</span>
+                  {l.href === "/app/service" && unread > 0 ? (
+                    <span className="nav-badge" aria-label={`${unread} חדשות`}>
+                      {unread}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}

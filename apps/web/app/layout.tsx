@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Heebo, Rubik } from "next/font/google";
+import { Frank_Ruhl_Libre, Heebo, Rubik } from "next/font/google";
 import { MobileNativeShell } from "@/components/MobileNativeShell";
 import "./globals.css";
 
@@ -12,6 +12,13 @@ const heebo = Heebo({
 const rubik = Rubik({
   subsets: ["hebrew", "latin"],
   variable: "--font-display-face",
+  display: "swap",
+});
+
+const frankRuhl = Frank_Ruhl_Libre({
+  subsets: ["hebrew", "latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-serif-face",
   display: "swap",
 });
 
@@ -39,13 +46,18 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#15202b",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="he" dir="rtl" className={`${heebo.variable} ${rubik.variable}`}>
+    <html
+      lang="he"
+      dir="rtl"
+      className={`${heebo.variable} ${rubik.variable} ${frankRuhl.variable}`}
+    >
       <body>
         <MobileNativeShell />
         {children}

@@ -7,7 +7,6 @@ import { PeriodBar, useSelectedMonth, appHref } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
 import { DebtsSubNav } from "@/components/DebtsSubNav";
 import { DebtSplitMeter } from "@/components/DebtSplitMeter";
-import { FeelRow } from "@/components/FeelRow";
 
 type Overview = {
   month: string;
@@ -85,12 +84,11 @@ function OverviewInner() {
     );
 
   return (
-    <div className="stack debts-page">
+    <div className="stack debts-page has-page-dock">
       <PageHeader
         kicker="אשראי והלוואות · בכבוד"
         title="יש סכום פתוח — ויש אדם שמנהל אותו"
         subtitle="שפה רגועה: אשראי והלוואות — לא תווית מפחידה. רואים את המספר, ואז כמה כבר התקדמתם."
-        footer={<DebtsSubNav />}
       />
       <PeriodBar />
 
@@ -107,7 +105,7 @@ function OverviewInner() {
       {data && (
         <>
           <section className="debts-hero-grid rise-2" aria-label="תמונת אשראי">
-            <div className="clarity-answer debts-hero-answer">
+            <div className="clarity-answer debts-hero-answer void-hero">
               <span className="clarity-answer-label">סה״כ פתוח</span>
               <div className="clarity-answer-value">{formatIls(openTotal)}</div>
               <p className="debts-hero-human">
@@ -175,27 +173,6 @@ function OverviewInner() {
               </p>
             </article>
           </section>
-
-          <FeelRow
-            items={[
-              {
-                emo: "להבין",
-                title: "פתוח ≠ קריסה",
-                text: "סכום פתוח מתאר התחייבויות לאורך זמן. מה שקובע היום הוא הכיסוי הקרוב.",
-              },
-              {
-                emo: "להרגיש",
-                title: "גאווה על ניהול",
-                text: "לראות הלוואות ואשראי בנפרד זה כבר שליטה — לא בלגן אחד.",
-              },
-              {
-                emo: "לעשות",
-                title: "לא להאיץ מתוך פחד",
-                text: "אל תפרעו הכול עכשיו אם זה שובר את החיץ. קצב יציב מנצח.",
-                hold: true,
-              },
-            ]}
-          />
 
           {data.attention.length > 0 && (
             <section className="debts-attention">
@@ -474,6 +451,7 @@ function OverviewInner() {
           </section>
         </>
       )}
+      <DebtsSubNav />
     </div>
   );
 }

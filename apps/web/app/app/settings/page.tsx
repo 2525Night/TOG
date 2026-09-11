@@ -3,7 +3,6 @@
 import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
-import { PeriodBar, useSelectedMonth } from "@/components/PeriodBar";
 
 type HouseholdStatus =
   | {
@@ -31,7 +30,6 @@ type BankStatus = {
 };
 
 function SettingsInner() {
-  const month = useSelectedMonth();
   const [household, setHousehold] = useState<HouseholdStatus | null>(null);
   const [bank, setBank] = useState<BankStatus | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -134,7 +132,6 @@ function SettingsInner() {
         title="שיתוף וחיבורים"
         subtitle="חום בזהירות — בלי רעש. שיתוף זוגי ואופציות עתידיות לבנק."
       />
-      <PeriodBar />
 
       {error && (
         <p className="form-error" role="alert">
@@ -253,10 +250,6 @@ function SettingsInner() {
           להורדת האפליקציה
         </a>
       </section>
-
-      <p className="muted" style={{ fontSize: "0.9rem" }}>
-        חודש פעיל בהגדרות: {month} — לא משפיע על השיתוף.
-      </p>
     </div>
   );
 }

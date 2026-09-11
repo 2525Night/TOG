@@ -212,7 +212,7 @@ function CardsInner() {
   }
 
   return (
-    <div className="stack debts-page">
+    <div className="stack debts-page has-page-dock">
       <PageHeader
         kicker="כרטיסי אשראי"
         title="אשראי פתוח"
@@ -246,7 +246,6 @@ function CardsInner() {
             </button>
           </div>
         }
-        footer={<DebtsSubNav />}
       />
       <PeriodBar />
 
@@ -698,6 +697,7 @@ function CardsInner() {
           );
         })}
       </div>
+      <DebtsSubNav />
     </div>
   );
 }

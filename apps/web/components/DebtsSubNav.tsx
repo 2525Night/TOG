@@ -5,9 +5,19 @@ import { usePathname } from "next/navigation";
 import { appHref, useSelectedMonth } from "@/components/PeriodBar";
 
 const items = [
-  { href: "/app/debts", label: "סקירה", match: "exact" as const },
-  { href: "/app/debts/loans", label: "הלוואות", match: "prefix" as const },
-  { href: "/app/debts/cards", label: "כרטיסי אשראי", match: "prefix" as const },
+  { href: "/app/debts", label: "סקירה", match: "exact" as const, id: "overview" },
+  {
+    href: "/app/debts/loans",
+    label: "הלוואות",
+    match: "prefix" as const,
+    id: "loans",
+  },
+  {
+    href: "/app/debts/cards",
+    label: "כרטיסי אשראי",
+    match: "prefix" as const,
+    id: "cards",
+  },
 ];
 
 function isActive(pathname: string, item: (typeof items)[number]) {
@@ -17,13 +27,13 @@ function isActive(pathname: string, item: (typeof items)[number]) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-/** Native Next Link only — no click interception (that stalled soft-nav). */
+/** Bottom contextual dock for אשראי והלוואות (replaces header DebtsSubNav). */
 export function DebtsSubNav() {
   const pathname = usePathname();
   const month = useSelectedMonth();
 
   return (
-    <nav className="debts-subnav" aria-label="אשראי והלוואות">
+    <nav className="page-dock" role="tablist" aria-label="אשראי והלוואות">
       {items.map((item) => {
         const href = appHref(item.href, month);
         const active = isActive(pathname, item);
@@ -32,8 +42,10 @@ export function DebtsSubNav() {
             key={item.href}
             href={href}
             prefetch
-            className={active ? "active" : undefined}
+            role="tab"
+            aria-selected={active}
             aria-current={active ? "page" : undefined}
+            className={active ? "active" : undefined}
           >
             {item.label}
           </Link>

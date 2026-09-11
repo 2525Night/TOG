@@ -197,7 +197,7 @@ function LoansInner() {
   }, [data]);
 
   return (
-    <div className="stack debts-page">
+    <div className="stack debts-page has-page-dock">
       <PageHeader
         kicker="הלוואות"
         title="מה נשאר להחזיר"
@@ -219,7 +219,6 @@ function LoansInner() {
             {openForm ? "סגור" : "הוסף הלוואה"}
           </button>
         }
-        footer={<DebtsSubNav />}
       />
       <PeriodBar />
 
@@ -740,6 +739,7 @@ function LoansInner() {
           );
         })}
       </div>
+      <DebtsSubNav />
     </div>
   );
 }
