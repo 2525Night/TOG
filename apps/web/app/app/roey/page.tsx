@@ -169,16 +169,16 @@ type RoeyNudge = {
 
 const QUICK_PROMPTS = [
   "מה מצב החודש שלי?",
+  "כמה הפסדתי בחודש האחרון?",
   "מה מסכן אותי כרגע?",
-  "מה הצעד הבא שכדאי לי לעשות?",
   "תציג לי תחזית ל-90 יום",
 ];
 
 function RoeyPageInner() {
   const month = useSelectedMonth();
-  const [tab, setTab] = useState<"CHAT" | "PLAN" | "ACTIONS" | "SETTINGS">(
-    "CHAT",
-  );
+  const [tab, setTab] = useState<"CHAT" | "DO" | "FIT">("CHAT");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [pendingActionCount, setPendingActionCount] = useState(0);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -250,10 +250,19 @@ function RoeyPageInner() {
               : "לא ניתן לטעון את רשימת המודלים",
           );
         }
+        try {
+          const actions = await api<Array<{ status: string }>>("/roey/actions");
+          setPendingActionCount(
+            actions.filter((row) => row.status === "PENDING").length,
+          );
+        } catch {
+          setPendingActionCount(0);
+        }
       } else {
         setModels([]);
         setForecast(null);
         setRisk(null);
+        setPendingActionCount(0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "לא ניתן לטעון את Roey");
@@ -545,13 +554,24 @@ function RoeyPageInner() {
   }
 
   return (
-    <div className={`roey-page${tab === "CHAT" ? " roey-page--chat" : ""}`}>
-      <PageHeader
-        kicker="המלווה הפיננסי שלך"
-        title="Roey"
-        subtitle="מבין את התמונה, משקף סיכון ומלווה אותך לצעד הבא."
-        actions={<MonthSelect className="roey-month-select" />}
-      />
+    <div className={`roey-page has-dock${tab === "CHAT" ? " roey-page--chat" : ""}`}>
+      {tab === "CHAT" ? (
+        <div className="roey-chat-chrome">
+          <p className="roey-chat-eyebrow">Roey · שיחה</p>
+          <MonthSelect className="roey-month-select" />
+        </div>
+      ) : (
+        <PageHeader
+          kicker="המלווה הפיננסי שלך"
+          title={tab === "DO" ? "לעשות" : "התאמה"}
+          subtitle={
+            tab === "DO"
+              ? "אותות קטנים — בלי לחץ."
+              : "חיבור ומנועי AI · בלי חיבור אין תשובות חיות."
+          }
+          actions={<MonthSelect className="roey-month-select" />}
+        />
+      )}
 
       {nudges.length > 0 && (
         <section className="roey-nudge-list" aria-label="עדכונים מ-Roey">
@@ -588,61 +608,11 @@ function RoeyPageInner() {
         </section>
       )}
 
-      {profile?.journey && (
-        <section className="roey-journey card">
-          <div className="roey-avatar" aria-hidden="true">R</div>
-          <div>
-            <span className="roey-eyebrow">השלב שלך במסע</span>
-            <h2>{profile.journey.titleHe}</h2>
-            <p>{profile.journey.messageHe}</p>
-          </div>
-        </section>
-      )}
-
-      <div className="roey-tabs" role="tablist" aria-label="Roey">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "CHAT"}
-          className={tab === "CHAT" ? "active" : ""}
-          onClick={() => setTab("CHAT")}
-        >
-          שיחה
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "PLAN"}
-          className={tab === "PLAN" ? "active" : ""}
-          onClick={() => setTab("PLAN")}
-        >
-          מסע
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "ACTIONS"}
-          className={tab === "ACTIONS" ? "active" : ""}
-          onClick={() => setTab("ACTIONS")}
-        >
-          פעולות
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "SETTINGS"}
-          className={tab === "SETTINGS" ? "active" : ""}
-          onClick={() => setTab("SETTINGS")}
-        >
-          הגדרות
-        </button>
-      </div>
-
       {error && <p className="form-error" role="alert">{error}</p>}
       {success && <p className="form-success" role="status">{success}</p>}
 
       {tab === "CHAT" ? (
-        <section className="roey-workspace">
+        <section className="roey-workspace ready-type">
           {!connection?.connected ? (
             <div className="card roey-connect-callout">
               <span className="roey-eyebrow">נדרש חיבור חד־פעמי</span>
@@ -650,32 +620,28 @@ function RoeyPageInner() {
               <p className="muted">
                 המפתח נשמר מוצפן בשרת ולעולם אינו נשמר בטלפון.
               </p>
-              <button className="btn" type="button" onClick={() => setTab("SETTINGS")}>
-                להגדרת החיבור
+              <button className="btn" type="button" onClick={() => setTab("FIT")}>
+                להתאמת החיבור
               </button>
             </div>
           ) : (
-            <>
-              {connection.platformManaged ? (
-                <p className="muted" style={{ margin: "0 0 0.75rem" }}>
-                  Roey מחובר במפתח מובנה של MoneyTail5 — אפשר להתחיל לדבר בלי
-                  הגדרות. בהגדרות אפשר לחבר מפתח אישי במקום.
-                </p>
-              ) : null}
-              <div className="roey-chat card">
-                <div className="roey-session-toolbar">
+            <div className="roey-chat card ready-type">
+              <div className="roey-chat-body">
+                <div className="roey-session-toolbar slim">
                   {profile?.memoryEnabled ? (
                     <>
                       <button
                         className="btn quiet"
                         type="button"
                         aria-expanded={sessionsOpen}
+                        aria-label="סשנים שמורים"
                         onClick={() => setSessionsOpen((current) => !current)}
                       >
-                        סשנים שמורים ({sessions.length})
+                        ⋮ סשנים
+                        {sessions.length > 0 ? ` (${sessions.length})` : ""}
                       </button>
                       <button
-                        className="btn secondary"
+                        className="btn quiet"
                         type="button"
                         onClick={startNewSession}
                       >
@@ -683,10 +649,16 @@ function RoeyPageInner() {
                       </button>
                     </>
                   ) : (
-                    <span className="muted">
-                      הזיכרון כבוי — השיחה הנוכחית לא תישמר.
-                    </span>
+                    <span className="muted">הזיכרון כבוי</span>
                   )}
+                  <button
+                    className="btn quiet"
+                    type="button"
+                    aria-expanded={detailsOpen}
+                    onClick={() => setDetailsOpen((current) => !current)}
+                  >
+                    {detailsOpen ? "הסתרת פרטים" : "פרטים"}
+                  </button>
                 </div>
 
                 {sessionsOpen && profile?.memoryEnabled && (
@@ -708,7 +680,12 @@ function RoeyPageInner() {
                             <small>
                               {new Date(session.updatedAt).toLocaleDateString(
                                 "he-IL",
-                                { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" },
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
                               )}
                               {" · "}
                               {session.messageCount} הודעות
@@ -728,13 +705,13 @@ function RoeyPageInner() {
                   </aside>
                 )}
 
+                {detailsOpen && forecast && risk && (
+                  <ForecastPanel forecast={forecast} risk={risk} />
+                )}
+
                 {messages.length === 0 && (
-                  <div className="roey-welcome">
-                    <div className="roey-avatar large" aria-hidden="true">R</div>
+                  <div className="roey-welcome compact">
                     <h2>במה נתחיל?</h2>
-                    <p className="muted">
-                      אני משתמש רק בנתונים המחושבים של MoneyTail5 ומציין כשהתמונה חלקית.
-                    </p>
                     <div className="roey-prompts">
                       {QUICK_PROMPTS.map((prompt) => (
                         <button
@@ -782,55 +759,68 @@ function RoeyPageInner() {
                   )}
                   <div ref={endRef} />
                 </div>
+              </div>
+            </div>
+          )}
 
-                <form
-                  className="roey-composer"
-                  onSubmit={(event) => {
+          {connection?.connected ? (
+            <form
+              className="roey-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void ask(message);
+              }}
+            >
+              <label htmlFor="roey-message" className="sr-only">
+                הודעה ל-Roey
+              </label>
+              <textarea
+                id="roey-message"
+                name="message"
+                value={message}
+                rows={1}
+                maxLength={2_000}
+                placeholder="שאלו את Roey…"
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     void ask(message);
-                  }}
-                >
-                  <label htmlFor="roey-message" className="sr-only">
-                    הודעה ל-Roey
-                  </label>
-                  <textarea
-                    id="roey-message"
-                    name="message"
-                    value={message}
-                    rows={2}
-                    maxLength={2_000}
-                    placeholder="שאלו את Roey על המצב הפיננסי שלכם…"
-                    onChange={(event) => setMessage(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void ask(message);
-                      }
-                    }}
-                  />
-                  <button className="btn" disabled={busy || !message.trim()} type="submit">
-                    שליחה
-                  </button>
-                </form>
-              </div>
-
-              {forecast && risk && (
-                <ForecastPanel forecast={forecast} risk={risk} />
-              )}
-            </>
-          )}
+                  }
+                }}
+              />
+              <button
+                className="btn"
+                disabled={busy || !message.trim()}
+                type="submit"
+              >
+                שליחה
+              </button>
+            </form>
+          ) : null}
         </section>
-      ) : tab === "PLAN" ? (
-        <RoeyPlanPanel />
-      ) : tab === "ACTIONS" ? (
-        <RoeyActionsPanel
-          month={month}
-          conversationId={conversationId}
-        />
+      ) : tab === "DO" ? (
+        <section className="roey-do-stack" aria-label="לעשות">
+          {profile?.journey && (
+            <section className="roey-journey card">
+              <div className="roey-avatar" aria-hidden="true">R</div>
+              <div>
+                <span className="roey-eyebrow">השלב שלך במסע</span>
+                <h2>{profile.journey.titleHe}</h2>
+                <p>{profile.journey.messageHe}</p>
+              </div>
+            </section>
+          )}
+          <RoeyPlanPanel />
+          <RoeyActionsPanel
+            month={month}
+            conversationId={conversationId}
+          />
+        </section>
       ) : (
         <section className="roey-settings-grid">
           <div className="card">
-            <span className="roey-eyebrow">מנוע AI</span>
+            <span className="roey-eyebrow">התאמה · מנוע AI</span>
             <h2>Google AI Studio</h2>
             {!connection?.connected ? (
               <form className="roey-settings-form" onSubmit={connect}>
@@ -1027,6 +1017,39 @@ function RoeyPageInner() {
           )}
         </section>
       )}
+
+      <nav className="roey-dock" role="tablist" aria-label="ניווט Roey">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "CHAT"}
+          className={tab === "CHAT" ? "active" : ""}
+          onClick={() => setTab("CHAT")}
+        >
+          שיחה
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "DO"}
+          className={tab === "DO" ? "active" : ""}
+          onClick={() => setTab("DO")}
+        >
+          לעשות
+          {pendingActionCount > 0 ? (
+            <span className="roey-dock-badge">{pendingActionCount}</span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "FIT"}
+          className={tab === "FIT" ? "active" : ""}
+          onClick={() => setTab("FIT")}
+        >
+          התאמה
+        </button>
+      </nav>
 
       {disconnectOpen && (
         <ConfirmPanel

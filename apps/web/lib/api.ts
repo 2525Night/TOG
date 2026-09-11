@@ -129,13 +129,20 @@ async function writeIndexedToken(token: string | null) {
 }
 
 async function parseError(res: Response) {
+  if (res.status === 413) {
+    throw new Error(
+      "הקובץ גדול מדי לשרת (מגבלת ענן). נסו CSV או תמונה/PDF קטנים יותר.",
+    );
+  }
   let message = "שגיאת שרת";
   try {
     const body = (await res.json()) as { message?: string | string[] };
     if (Array.isArray(body.message)) message = body.message.join(", ");
     else if (body.message) message = body.message;
   } catch {
-    /* ignore */
+    if (res.status >= 500) {
+      message = "שגיאת שרת בהעלאה — נסו שוב או העלו CSV";
+    }
   }
   throw new Error(message);
 }
@@ -228,5 +235,12 @@ export async function apiDownload(path: string, filename: string) {
 }
 
 export function formatIls(n: number) {
-  return `₪${n.toLocaleString("he-IL", { maximumFractionDigits: 0 })}`;
+  const abs = Math.abs(n);
+  // Sub-₪1 amounts must not round to ₪0 in lists/toasts.
+  const maxFrac = abs > 0 && abs < 1 ? 2 : Number.isInteger(n) ? 0 : 2;
+  const minFrac = abs > 0 && abs < 1 ? 2 : 0;
+  return `₪${n.toLocaleString("he-IL", {
+    maximumFractionDigits: maxFrac,
+    minimumFractionDigits: minFrac,
+  })}`;
 }

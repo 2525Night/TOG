@@ -10,9 +10,9 @@ import {
   useSelectedMonth,
 } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
-import { Pulse } from "@/components/Pulse";
-import { FeelRow } from "@/components/FeelRow";
-import { WinStrip } from "@/components/WinStrip";
+import { PageDock } from "@/components/PageDock";
+
+type ReportsView = "summary" | "categories" | "trend";
 
 type Report = {
   monthsBack: number;
@@ -159,6 +159,7 @@ function ReportsInner() {
   const [customMonths, setCustomMonths] = useState("6");
   const [trendMode, setTrendMode] = useState<"preset" | "custom">("preset");
   const [exportBusy, setExportBusy] = useState(false);
+  const [view, setView] = useState<ReportsView>("summary");
 
   useEffect(() => {
     let cancelled = false;
@@ -284,7 +285,7 @@ function ReportsInner() {
   );
 
   return (
-    <div className="grid reports-page" style={{ gap: "0.85rem" }}>
+    <div className="grid reports-page has-page-dock" style={{ gap: "0.85rem" }}>
       <PageHeader
         kicker="מאזן"
         title="מה נכנס · מה יצא"
@@ -312,9 +313,6 @@ function ReportsInner() {
         expense={expense}
         extra={
           <>
-            <span className={net >= 0 ? "tx-in" : "tx-out"}>
-              נטו <strong>{formatIls(net)}</strong>
-            </span>
             {toGoals > 0 && (
               <span>
                 ליעדים <strong>{formatIls(toGoals)}</strong>
@@ -332,133 +330,93 @@ function ReportsInner() {
         }
       />
 
-      {sparse && (
-        <section className="card alert-card insight-card" role="status">
-          <div className="insight-block">
-            <strong className="insight-conclusion">
-              {income <= 0 && expense > 0
-                ? "חסרות הכנסות בחודש"
-                : income <= 0 && expense <= 0
-                  ? "בחודש זה עדיין אין תנועות"
-                  : "התמונה עדיין חלקית"}
-            </strong>
-            <p className="insight-meaning muted">
-              כדאי לייבא דף חשבון או להוסיף תנועות — בינתיים המאזן עלול להטעות, ולכן לא נציג אזהרות חזקות.
-            </p>
-            <div className="clarity-actions" style={{ marginBottom: 0 }}>
-              <Link
-                className="btn secondary"
-                href={`/app/money?month=${month}&tab=import`}
-              >
-                לייבוא
+      {view === "summary" && (
+        <>
+          {sparse && (
+            <section className="card alert-card insight-card" role="status">
+              <div className="insight-block">
+                <strong className="insight-conclusion">
+                  {income <= 0 && expense > 0
+                    ? "חסרות הכנסות בחודש"
+                    : income <= 0 && expense <= 0
+                      ? "בחודש זה עדיין אין תנועות"
+                      : "התמונה עדיין חלקית"}
+                </strong>
+                <p className="insight-meaning muted">
+                  כדאי לייבא דף חשבון או להוסיף תנועות — בינתיים המאזן עלול להטעות, ולכן לא נציג אזהרות חזקות.
+                </p>
+                <div className="clarity-actions" style={{ marginBottom: 0 }}>
+                  <Link
+                    className="btn secondary"
+                    href={`/app/money?month=${month}&tab=import`}
+                  >
+                    לייבוא
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section className="clarity-answer report-hero void-hero" aria-label="נטו החודש">
+            <span className="clarity-answer-label">
+              נטו אחרי הוצאות וליעדים · {labelMonthHe(month)}
+            </span>
+            <div
+              className={`clarity-answer-value${net >= 0 ? " tx-in" : " tx-out"}`}
+            >
+              {net >= 0 ? "+" : ""}
+              {formatIls(net)}
+            </div>
+            {data.narrativeHe ? (
+              <p className="insight-conclusion report-narrative">
+                {data.narrativeHe}
+              </p>
+            ) : null}
+            <div className="clarity-meaning" style={{ paddingBottom: 0 }}>
+              <span>
+                מול חודש קודם · <Delta pct={data.mom.net.deltaPct} invert />
+              </span>
+              {toGoals > 0 && (
+                <span>
+                  ליעדים
+                  <strong>{formatIls(toGoals)}</strong>
+                </span>
+              )}
+              <span>
+                הוצאות
+                <strong>{formatIls(expense)}</strong>
+              </span>
+            </div>
+            <div className="clarity-actions" style={{ marginTop: "0.75rem", marginBottom: 0 }}>
+              <Link className="btn secondary" href={`/app/money?month=${month}`}>
+                לתנועות
               </Link>
             </div>
-          </div>
-        </section>
+          </section>
+
+          {(income > 0 || fixedAmt > 0 || flexAmt > 0 || toGoals > 0) && (
+            <section className="card">
+              <h2 style={{ marginTop: 0, marginBottom: "0.65rem" }}>
+                איך ההכנסות מתחלקות
+              </h2>
+              <BudgetPie
+                income={budget?.incomeActual ?? income}
+                fixed={fixedAmt}
+                flexible={flexAmt}
+                toGoals={toGoals}
+                leftover={leftoverAmt}
+              />
+              {budget?.fixed.basisForLeftover === "expected" && (
+                <p className="muted" style={{ margin: "0.65rem 0 0", fontSize: "0.85rem" }}>
+                  קבועים לפי צפוי — עדיין לא נרשמו תשלומים לחודש זה
+                </p>
+              )}
+            </section>
+          )}
+        </>
       )}
 
-      <section className="clarity-answer report-hero" aria-label="נטו החודש">
-        <span className="clarity-answer-label">
-          נטו אחרי הוצאות וליעדים · {labelMonthHe(month)}
-        </span>
-        <div
-          className={`clarity-answer-value${net >= 0 ? " tx-in" : " tx-out"}`}
-        >
-          {net >= 0 ? "+" : ""}
-          {formatIls(net)}
-        </div>
-        {data.narrativeHe ? (
-          <p className="insight-conclusion report-narrative">
-            {data.narrativeHe}
-          </p>
-        ) : null}
-        <div className="clarity-meaning" style={{ paddingBottom: 0 }}>
-          <span>
-            מול חודש קודם · <Delta pct={data.mom.net.deltaPct} invert />
-          </span>
-          {toGoals > 0 && (
-            <span>
-              ליעדים
-              <strong>{formatIls(toGoals)}</strong>
-            </span>
-          )}
-          <span>
-            הוצאות
-            <strong>{formatIls(expense)}</strong>
-          </span>
-        </div>
-        <div className="clarity-actions" style={{ marginTop: "0.75rem", marginBottom: 0 }}>
-          <Link className="btn secondary" href={`/app/money?month=${month}`}>
-            לתנועות
-          </Link>
-        </div>
-      </section>
-
-      <Pulse
-        tone={net >= 0 ? "win" : "hold"}
-        mark={net >= 0 ? "✓" : "!"}
-        label={net >= 0 ? "חיזוק מוטיבציה" : "ליווי רגשי"}
-        title={net >= 0 ? "החודש עבד לטובתכם" : "המאזן דורש מבט רגוע"}
-        text={
-          net >= 0
-            ? "נכנס יותר ממה שיצא. מותר להרגיש גאווה — ואז לבחור צעד שמחזק ביטחון."
-            : "המספרים כאן כדי לכוון, לא כדי לשפוט. ראו קודם את הנטו, ואז את הפירוט."
-        }
-      />
-
-      <WinStrip
-        items={[
-          {
-            label: "נטו",
-            value: `${net >= 0 ? "+" : ""}${formatIls(net)}`,
-          },
-        ]}
-      />
-
-      <FeelRow
-        items={[
-          {
-            emo: "להבין",
-            title: "נטו הוא התשובה",
-            text: "זה ההפרש בין מה שנכנס למה שיצא — לפני שמסתבכים בפירוט.",
-          },
-          {
-            emo: "להרגיש",
-            title: net >= 0 ? "הקלה לגיטימית" : "בלי בושה",
-            text:
-              net >= 0
-                ? "תזרים חיובי הוא הישג שקט. תנו לו מקום."
-                : "חודש שלילי קורה. מה שחשוב הוא לראות ולכוון.",
-          },
-          {
-            emo: "לעשות",
-            title: "צעד אחד",
-            text: "עברו לתנועות כדי לתקן או להשלים רישום — לא כדי «לתקן את החיים».",
-            hold: true,
-          },
-        ]}
-      />
-
-      {(income > 0 || fixedAmt > 0 || flexAmt > 0 || toGoals > 0) && (
-        <section className="card">
-          <h2 style={{ marginTop: 0, marginBottom: "0.65rem" }}>
-            איך ההכנסות מתחלקות
-          </h2>
-          <BudgetPie
-            income={budget?.incomeActual ?? income}
-            fixed={fixedAmt}
-            flexible={flexAmt}
-            toGoals={toGoals}
-            leftover={leftoverAmt}
-          />
-          {budget?.fixed.basisForLeftover === "expected" && (
-            <p className="muted" style={{ margin: "0.65rem 0 0", fontSize: "0.85rem" }}>
-              קבועים לפי צפוי — עדיין לא נרשמו תשלומים לחודש זה
-            </p>
-          )}
-        </section>
-      )}
-
+      {view === "trend" && (
       <section className="card report-trend">
         <div className="list-row" style={{ border: "none", paddingTop: 0 }}>
           <h2 style={{ margin: 0 }}>מגמת {months} חודשים</h2>
@@ -548,7 +506,10 @@ function ReportsInner() {
           }))}
         />
       </section>
+      )}
 
+      {view === "categories" && (
+        <>
       <section className="balance-sheet">
         <div className="card">
           <div className="list-row" style={{ border: "none", paddingTop: 0 }}>
@@ -713,6 +674,19 @@ function ReportsInner() {
           </table>
         )}
       </section>
+        </>
+      )}
+
+      <PageDock
+        ariaLabel="מצבי מאזן"
+        value={view}
+        onChange={(id) => setView(id as ReportsView)}
+        items={[
+          { id: "summary", label: "סיכום" },
+          { id: "categories", label: "קטגוריות" },
+          { id: "trend", label: "מגמה" },
+        ]}
+      />
     </div>
   );
 }

@@ -490,7 +490,7 @@ function CardDetailInner() {
   if (!card) return null;
 
   return (
-    <div className="stack debts-page">
+    <div className="stack debts-page has-page-dock">
       <PageHeader
         kicker="כרטיס אשראי"
         title={
@@ -525,7 +525,6 @@ function CardDetailInner() {
             </button>
           </div>
         }
-        footer={<DebtsSubNav />}
       />
       <PeriodBar />
       <Link href={appHref("/app/debts/cards", month)} className="muted">
@@ -1100,6 +1099,7 @@ function CardDetailInner() {
           )}
         </div>
       )}
+      <DebtsSubNav />
     </div>
   );
 }

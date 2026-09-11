@@ -22,10 +22,9 @@ import {
   labelMonthHe,
 } from "@/components/PeriodBar";
 import { PageHeader } from "@/components/PageHeader";
-import { Pulse } from "@/components/Pulse";
-import { FeelRow } from "@/components/FeelRow";
-import { WinStrip } from "@/components/WinStrip";
+import { PageHero } from "@/components/PageHero";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
+import { PageDock } from "@/components/PageDock";
 
 type Account = {
   id: string;
@@ -53,6 +52,12 @@ type TxList = {
 
 type Filter = "all" | "out" | "in" | "today";
 type AddMode = null | "choice" | "expense" | "atm" | "opening";
+type CashView = "journal" | "atm" | "balance";
+
+function parseCashView(raw: string | null): CashView {
+  if (raw === "atm" || raw === "balance") return raw;
+  return "journal";
+}
 
 function dayKey(iso: string) {
   const d = new Date(iso);
@@ -94,6 +99,10 @@ function CashJournalInner() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
+  const [view, setView] = useState<CashView>(() =>
+    parseCashView(search.get("view")),
+  );
+  const [atmMore, setAtmMore] = useState(false);
   const [addMode, setAddMode] = useState<AddMode>(null);
   const [detail, setDetail] = useState<Tx | null>(null);
   const [confirmDel, setConfirmDel] = useState<Tx | null>(null);
@@ -180,22 +189,6 @@ function CashJournalInner() {
     [items],
   );
 
-  const monthOut = useMemo(
-    () =>
-      items
-        .filter((t) => t.direction === "EXPENSE")
-        .reduce((s, t) => s + Number(t.amount), 0),
-    [items],
-  );
-
-  const monthIn = useMemo(
-    () =>
-      items
-        .filter((t) => t.direction === "INCOME")
-        .reduce((s, t) => s + Number(t.amount), 0),
-    [items],
-  );
-
   const counts = useMemo(
     () => ({
       all: items.length,
@@ -221,6 +214,27 @@ function CashJournalInner() {
     setError(null);
     setConfirmDel(null);
     setAddMode(mode);
+  }
+
+  function goView(next: CashView) {
+    setView(next);
+    setConfirmDel(null);
+    if (next === "atm") {
+      setDetail(null);
+      setAtmMore(false);
+      openMode("atm");
+      return;
+    }
+    setAtmMore(false);
+    if (next === "balance") {
+      if (addMode === "atm" || addMode === "choice" || addMode === "expense") {
+        setAddMode(null);
+      }
+      return;
+    }
+    // journal
+    if (addMode === "atm" || addMode === "opening") setAddMode(null);
+    setDetail(null);
   }
 
   async function saveExpense(e: FormEvent) {
@@ -276,6 +290,7 @@ function CashJournalInner() {
       });
       resetForm();
       setAddMode(null);
+      setView("journal");
       setMsg(`משיכה נרשמה · −${formatIls(n)} בעו״ש · +${formatIls(n)} בכיס`);
       await refresh();
     } catch (err) {
@@ -316,6 +331,7 @@ function CashJournalInner() {
       });
       resetForm();
       setAddMode(null);
+      setView("journal");
       setMsg(`יומן התחיל · יש לכם ${formatIls(n)} במזומן`);
       await refresh();
     } catch (err) {
@@ -358,56 +374,64 @@ function CashJournalInner() {
       : `יש לכם ${formatIls(balance)} במזומן`;
 
   return (
-    <div className="grid money-hub" style={{ gap: "0.85rem" }} data-testid="cash-journal">
+    <div
+      className="grid money-hub has-page-dock"
+      style={{ gap: "0.85rem" }}
+      data-testid="cash-journal"
+    >
       <PageHeader
-        title="מעקב מזומן"
-        subtitle={`יומן כיס · ${labelMonthHe(month)} · לא עו״ש`}
-      />
-
-      <section
-        className="clarity-answer"
-        aria-label="תשובת מזומן"
-        data-testid="cash-clarity"
-      >
-        <span className="clarity-answer-label">מזומן בכיס עכשיו</span>
-        <div
-          className={`clarity-answer-value${balance < 0 ? " tx-out" : ""}`}
-          data-testid="cash-balance-hero"
-        >
-          {bootLoading ? "…" : formatIls(balance)}
-        </div>
-        <p className="muted" style={{ margin: "0.35rem 0 0" }} data-testid="cash-clarity-meaning">
-          {bootLoading
-            ? "טוענים את יומן הכיס…"
-            : empty
-              ? "נקודת התחלה קצרה — כמה יש בכיס, בלי לערבב עם העו״ש"
-              : todayOut > 0
-                ? `${clarityAnswer} · היום −${formatIls(todayOut)}`
-                : `${clarityAnswer} · רק כיס פיזי, נפרד מהעו״ש`}
-        </p>
-      </section>
-
-      <PeriodBar
-        balance={balance}
-        balanceLabel="יתרת מזומן"
-        income={empty || bootLoading ? null : monthIn}
-        expense={empty || bootLoading ? null : monthOut}
-        expenseLabel="הוצאות מזומן"
-        extra={
-          <span className="muted" data-testid="cash-not-checking">
-            לא יתרת עו״ש
-          </span>
+        title={view === "atm" ? "משיכה לכיס" : "מעקב מזומן"}
+        subtitle={
+          view === "atm"
+            ? `מעו״ש → מזומן · עכשיו בכיס ${bootLoading ? "…" : formatIls(balance)}`
+            : undefined
         }
+        kicker={view === "atm" ? undefined : "כיס"}
       />
 
-      {hasPocketData ? (
-        <WinStrip
-          items={[
-            { label: "בכיס", value: formatIls(balance) },
-            { label: "היום", value: todayOut > 0 ? `−${formatIls(todayOut)}` : "₪0" },
-            { label: "רשומות", value: String(items.length) },
-          ]}
-        />
+      {view !== "atm" ? (
+        <>
+          <PageHero
+            kicker={
+              view === "balance"
+                ? "יתרה · מזומן בכיס"
+                : "מעקב מזומן · יומן"
+            }
+            amount={
+              <span data-testid="cash-balance-hero">
+                {bootLoading
+                  ? "…"
+                  : balance.toLocaleString("he-IL", {
+                      maximumFractionDigits:
+                        Math.abs(balance) > 0 && Math.abs(balance) < 1 ? 2 : 0,
+                    })}
+              </span>
+            }
+            unit="₪ · בכיס עכשיו · לא יתרת עו״ש"
+            answer={
+              <span data-testid="cash-clarity-meaning">
+                {bootLoading
+                  ? "טוענים את יומן הכיס…"
+                  : empty
+                    ? "נקודת התחלה קצרה — כמה יש בכיס, בלי לערבב עם העו״ש"
+                    : todayOut > 0
+                      ? `${clarityAnswer} · היום −${formatIls(todayOut)}`
+                      : `${clarityAnswer} · רק כיס פיזי, נפרד מהעו״ש`}
+              </span>
+            }
+            negative={balance < 0}
+            aria-label="תשובת מזומן"
+            data-testid="cash-clarity"
+          />
+
+          <PeriodBar
+            extra={
+              <span className="muted" data-testid="cash-not-checking">
+                לא יתרת עו״ש
+              </span>
+            }
+          />
+        </>
       ) : null}
 
       {error ? (
@@ -421,7 +445,7 @@ function CashJournalInner() {
         </p>
       ) : null}
 
-      {bootLoading ? (
+      {view !== "atm" && bootLoading ? (
         <section className="card" aria-busy="true" data-testid="cash-loading">
           <p className="muted" style={{ margin: 0 }}>
             טוענים יומן מזומן…
@@ -429,7 +453,7 @@ function CashJournalInner() {
         </section>
       ) : null}
 
-      {hasPocketData ? (
+      {view === "journal" && hasPocketData ? (
         <div
           className="dir-chips"
           role="tablist"
@@ -464,7 +488,7 @@ function CashJournalInner() {
         </div>
       ) : null}
 
-      {hasPocketData ? (
+      {view === "journal" && hasPocketData ? (
         <p
           className="muted"
           style={{ margin: 0, fontSize: "0.85rem" }}
@@ -476,7 +500,7 @@ function CashJournalInner() {
         </p>
       ) : null}
 
-      {empty && !loading ? (
+      {view === "journal" && empty && !loading ? (
         <section
           className="card"
           aria-label="התחלת יומן מזומן"
@@ -497,7 +521,10 @@ function CashJournalInner() {
               type="button"
               className="btn"
               data-testid="cash-cta-opening"
-              onClick={() => openMode("opening")}
+              onClick={() => {
+                goView("balance");
+                openMode("opening");
+              }}
             >
               הגדר יתרת פתיחה
             </button>
@@ -505,7 +532,7 @@ function CashJournalInner() {
               type="button"
               className="btn secondary"
               data-testid="cash-cta-atm"
-              onClick={() => openMode("atm")}
+              onClick={() => goView("atm")}
             >
               משיכה מעו״ש לכיס
             </button>
@@ -513,7 +540,7 @@ function CashJournalInner() {
         </section>
       ) : null}
 
-      {hasPocketData ? (
+      {view === "journal" && hasPocketData ? (
         <>
           <div
             className="tx-add-actions"
@@ -589,6 +616,7 @@ function CashJournalInner() {
                             onClick={() => {
                               setAddMode(null);
                               setDetail(t);
+                              setView("balance");
                             }}
                           >
                             <span>
@@ -617,46 +645,7 @@ function CashJournalInner() {
         </>
       ) : null}
 
-      <Pulse
-        tone={empty ? "boost" : balance > 0 ? "win" : "hold"}
-        mark="₪"
-        label="יומן כיס"
-        title={
-          empty
-            ? "מזומן בכיס — בלי לערבב עם העו״ש"
-            : "כל הוצאה במזומן נשארת כאן, ברורה"
-        }
-        text={
-          empty
-            ? "משיכה מהבנק מעדכנת גם את העו״ש וגם את הכיס — בלי כפילות מבלבלת."
-            : "משיכה מהבנק = −בעו״ש ו־+בכיס. הוצאה מהכיס לא נוגעת בעו״ש."
-        }
-      />
-
-      <FeelRow
-        items={[
-          {
-            emo: "להבין",
-            title: "מה זה המספר?",
-            text: "יתרת מזומן = כמה יש בכיס/ארנק. לא יתרת העו״ש.",
-          },
-          {
-            emo: "להרגיש",
-            title: "בלי שיפוט",
-            text: "גם טיפ בלי קבלה ראוי לרישום — זה שליטה, לא ביקורת.",
-            hold: todayOut > 0,
-          },
-          {
-            emo: "לעשות",
-            title: "צעד קטן",
-            text: empty
-              ? "הגדירו יתרת פתיחה או רשמו משיכה אחת."
-              : "תעדו הוצאה אחת מהכיס — זה מספיק להיום.",
-          },
-        ]}
-      />
-
-      {addMode === "choice" ? (
+      {view === "journal" && addMode === "choice" ? (
         <div ref={formRef}>
         <section
           className="card"
@@ -686,7 +675,7 @@ function CashJournalInner() {
               type="button"
               className="btn secondary"
               data-testid="cash-choice-atm"
-              onClick={() => setAddMode("atm")}
+              onClick={() => goView("atm")}
             >
               + משיכה לכיס
             </button>
@@ -703,7 +692,7 @@ function CashJournalInner() {
         </div>
       ) : null}
 
-      {addMode === "expense" ? (
+      {view === "journal" && addMode === "expense" ? (
         <div ref={formRef}>
         <form
           className="card"
@@ -782,186 +771,234 @@ function CashJournalInner() {
         </div>
       ) : null}
 
-      {addMode === "atm" ? (
-        <div ref={formRef}>
-        <form
-          className="card"
-          onSubmit={saveAtm}
-          aria-label="משיכת מזומן"
-          data-testid="cash-form-atm"
-        >
-          <h3 style={{ marginTop: 0 }}>משיכה מעו״ש לכיס</h3>
-          <p className="muted" style={{ marginTop: 0 }} data-testid="cash-atm-explain">
-            נרשמות שתי תנועות מקושרות: − בעו״ש ו־+ במזומן — בלי כפילות בקטגוריית
-            הוצאה יומיומית.
-          </p>
-          <label>
-            סכום
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-              inputMode="decimal"
-              value={amount}
-              data-testid="cash-amount"
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-          <label>
-            תיאור
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="משיכת מזומן · כספומט"
-            />
-          </label>
-          <label>
-            תאריך
-            <input
-              type="date"
-              required
-              value={bookedAt}
-              onChange={(e) => setBookedAt(e.target.value)}
-            />
-          </label>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+      {view === "atm" ? (
+        <div ref={formRef} className="cash-atm-shell">
+          <form
+            className="cash-atm-panel"
+            onSubmit={saveAtm}
+            aria-label="משיכת מזומן"
+            data-testid="cash-form-atm"
+          >
+            <p className="cash-atm-explain" data-testid="cash-atm-explain">
+              − בעו״ש · + בכיס · בלי כפילות בהוצאות
+            </p>
+
+            <label className="cash-atm-amount field">
+              <span className="cash-atm-amount-label">סכום למשיכה</span>
+              <div className="cash-atm-amount-wrap">
+                <span className="cash-atm-currency" aria-hidden>
+                  ₪
+                </span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  inputMode="decimal"
+                  autoFocus
+                  value={amount}
+                  data-testid="cash-amount"
+                  placeholder="0"
+                  aria-label="סכום בשקלים"
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+            </label>
+
+            <label className="field cash-atm-date">
+              <span>תאריך</span>
+              <input
+                type="date"
+                required
+                value={bookedAt}
+                onChange={(e) => setBookedAt(e.target.value)}
+              />
+            </label>
+
+            {!atmMore ? (
+              <button
+                type="button"
+                className="linkish cash-atm-more-toggle"
+                onClick={() => setAtmMore(true)}
+              >
+                פרטים נוספים
+              </button>
+            ) : (
+              <label className="field">
+                <span>תיאור (אופציונלי)</span>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="משיכת מזומן · כספומט"
+                />
+              </label>
+            )}
+
             <button
               type="submit"
-              className="btn"
+              className="btn cash-atm-submit"
               disabled={busy}
               data-testid="cash-save-atm"
             >
               רשום משיכה
             </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => setAddMode(null)}
-            >
-              ביטול
-            </button>
-          </div>
-        </form>
+          </form>
         </div>
       ) : null}
 
-      {addMode === "opening" ? (
-        <div ref={formRef}>
-        <form
-          className="card"
-          onSubmit={saveOpening}
-          aria-label="יתרת פתיחה"
-          data-testid="cash-form-opening"
-        >
-          <h3 style={{ marginTop: 0 }}>יתרת פתיחה</h3>
-          <p className="muted" style={{ marginTop: 0 }}>
-            כמה יש לכם בכיס עכשיו? זה נקודת ההתחלה ליומן.
-          </p>
-          <label>
-            סכום
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-              inputMode="decimal"
-              value={amount}
-              data-testid="cash-amount"
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-          <label>
-            תאריך
-            <input
-              type="date"
-              required
-              value={bookedAt}
-              onChange={(e) => setBookedAt(e.target.value)}
-            />
-          </label>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <button
-              type="submit"
-              className="btn"
-              disabled={busy}
-              data-testid="cash-save-opening"
-            >
-              התחל יומן
-            </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => setAddMode(null)}
-            >
-              ביטול
-            </button>
-          </div>
-        </form>
-        </div>
-      ) : null}
-
-      {detail && !confirmDel ? (
-        <section
-          className="card"
-          aria-label="פרטי רשומה"
-          data-testid="cash-detail"
-        >
-          <h3 style={{ marginTop: 0 }}>
-            {detail.description?.trim() ||
-              categoryLabelHe(detail.categoryKey)}
-          </h3>
-          <p className="muted" style={{ marginTop: 0 }}>
-            {new Date(detail.bookedAt).toLocaleString("he-IL")} ·{" "}
-            {categoryLabelHe(detail.categoryKey)}
-          </p>
-          <p
-            style={{
-              fontSize: "1.35rem",
-              fontWeight: 700,
-              margin: "0.35rem 0",
-            }}
-            data-testid="cash-detail-amount"
-          >
-            <span
-              className={
-                detail.direction === "EXPENSE" ? "tx-out" : "tx-in"
-              }
-            >
-              {detail.direction === "EXPENSE" ? "−" : "+"}
-              {formatIls(Number(detail.amount))}
-            </span>
-          </p>
-          {detail.sourceReference?.startsWith("cash-atm:") ? (
-            <Link
-              className="btn secondary"
-              href={appHref("/app/money", month)}
-              style={{ marginBottom: "0.55rem" }}
-              data-testid="cash-detail-money-link"
-            >
-              פתח בתנועות (עו״ש)
-            </Link>
+      {view === "balance" ? (
+        <>
+          {!detail && !confirmDel && addMode !== "opening" ? (
+            <section className="card" aria-label="יתרה ופרטים">
+              <h3 style={{ marginTop: 0 }}>יתרה ופרטים</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                יתרת הכיס מוצגת למעלה. אפשר להגדיר יתרת פתיחה, או לבחור רשומה
+                מהיומן כדי לראות פרטים.
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="cash-cta-opening"
+                  onClick={() => openMode("opening")}
+                >
+                  {empty ? "הגדר יתרת פתיחה" : "עדכון יתרת פתיחה"}
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => goView("journal")}
+                >
+                  ליומן
+                </button>
+              </div>
+            </section>
           ) : null}
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btn secondary"
-              data-testid="cash-detail-delete"
-              onClick={() => setConfirmDel(detail)}
+
+          {addMode === "opening" ? (
+            <div ref={formRef}>
+            <form
+              className="card"
+              onSubmit={saveOpening}
+              aria-label="יתרת פתיחה"
+              data-testid="cash-form-opening"
             >
-              מחיקה
-            </button>
-            <button
-              type="button"
-              className="btn"
-              data-testid="cash-detail-close"
-              onClick={() => setDetail(null)}
+              <h3 style={{ marginTop: 0 }}>יתרת פתיחה</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                כמה יש לכם בכיס עכשיו? זה נקודת ההתחלה ליומן.
+              </p>
+              <label>
+                סכום
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  inputMode="decimal"
+                  value={amount}
+                  data-testid="cash-amount"
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </label>
+              <label>
+                תאריך
+                <input
+                  type="date"
+                  required
+                  value={bookedAt}
+                  onChange={(e) => setBookedAt(e.target.value)}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <button
+                  type="submit"
+                  className="btn"
+                  disabled={busy}
+                  data-testid="cash-save-opening"
+                >
+                  התחל יומן
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => {
+                    setAddMode(null);
+                    if (empty) goView("journal");
+                  }}
+                >
+                  ביטול
+                </button>
+              </div>
+            </form>
+            </div>
+          ) : null}
+
+          {detail && !confirmDel ? (
+            <section
+              className="card"
+              aria-label="פרטי רשומה"
+              data-testid="cash-detail"
             >
-              סגור
-            </button>
-          </div>
-        </section>
+              <h3 style={{ marginTop: 0 }}>
+                {detail.description?.trim() ||
+                  categoryLabelHe(detail.categoryKey)}
+              </h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                {new Date(detail.bookedAt).toLocaleString("he-IL")} ·{" "}
+                {categoryLabelHe(detail.categoryKey)}
+              </p>
+              <p
+                style={{
+                  fontSize: "1.35rem",
+                  fontWeight: 700,
+                  margin: "0.35rem 0",
+                }}
+                data-testid="cash-detail-amount"
+              >
+                <span
+                  className={
+                    detail.direction === "EXPENSE" ? "tx-out" : "tx-in"
+                  }
+                >
+                  {detail.direction === "EXPENSE" ? "−" : "+"}
+                  {formatIls(Number(detail.amount))}
+                </span>
+              </p>
+              {detail.sourceReference?.startsWith("cash-atm:") ? (
+                <Link
+                  className="btn secondary"
+                  href={appHref("/app/money", month)}
+                  style={{ marginBottom: "0.55rem" }}
+                  data-testid="cash-detail-money-link"
+                >
+                  פתח בתנועות (עו״ש)
+                </Link>
+              ) : null}
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  data-testid="cash-detail-delete"
+                  onClick={() => setConfirmDel(detail)}
+                >
+                  מחיקה
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="cash-detail-close"
+                  onClick={() => {
+                    setDetail(null);
+                    goView("journal");
+                  }}
+                >
+                  חזרה ליומן
+                </button>
+              </div>
+            </section>
+          ) : null}
+        </>
       ) : null}
 
       {confirmDel ? (
@@ -977,6 +1014,17 @@ function CashJournalInner() {
           />
         </div>
       ) : null}
+
+      <PageDock
+        ariaLabel="מצבי מזומן"
+        value={view}
+        onChange={(id) => goView(id as CashView)}
+        items={[
+          { id: "journal", label: "יומן" },
+          { id: "atm", label: "משיכה" },
+          { id: "balance", label: "יתרה" },
+        ]}
+      />
     </div>
   );
 }
