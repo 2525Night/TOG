@@ -69,6 +69,7 @@ model User {
   householdInvites    HouseholdInvite[] @relation("HouseholdInviteOwner")
 
   accounts            FinancialAccount[]
+  balanceSnapshots    AccountBalanceSnapshot[]
   transactions        Transaction[]
   goals               Goal[]
   auditEvents         AuditEvent[]
@@ -90,6 +91,8 @@ model User {
   roeyAgentRuns       RoeyAgentRun[]
   roeySemanticMemory  RoeySemanticMemory[]
   roeyEscalations     RoeyEscalation[]
+  serviceNotifications ServiceNotification[]
+  notificationPrefs   NotificationPrefs?
 
   @@index([householdOwnerId])
 }
@@ -123,10 +126,35 @@ model FinancialAccount {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  snapshots    AccountBalanceSnapshot[]
 
   @@index([userId])
+}
+
+enum SnapshotSource {
+  TX_UPSERT
+  BACKFILL
+}
+
+/** End-of-day liquid balance (BANK/CASH) after txs on asOfDate. */
+model AccountBalanceSnapshot {
+  id        String         @id @default(cuid())
+  userId    String
+  accountId String
+  asOfDate  DateTime
+  balance   Decimal
+  currency  String         @default("ILS")
+  source    SnapshotSource
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, asOfDate])
+  @@index([userId, asOfDate])
 }
 
 enum EconomicRole {
@@ -755,4 +783,55 @@ model RoeyEscalation {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, createdAt])
+}
+
+/** Unified service-center notification (Toast · Center · OS-ready). */
+model ServiceNotification {
+  id          String    @id @default(cuid())
+  userId      String
+  kind        String
+  source      String
+  titleHe     String
+  bodyHe      String
+  entityType  String?
+  entityId    String?
+  actionUrl   String?
+  centerTab   String
+  osEligible  Boolean   @default(false)
+  ttlSeconds  Int?
+  readAt      DateTime?
+  archivedAt  DateTime?
+  deletedAt   DateTime?
+  toastShownAt DateTime?
+  toastDismissedAt DateTime?
+  osRequestedAt DateTime?
+  osDeliveredAt DateTime?
+  osNotificationId String?
+  osChannelId String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt, createdAt])
+  @@index([userId, centerTab, readAt])
+  @@index([userId, kind])
+}
+
+model NotificationPrefs {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  toastEnabled          Boolean  @default(true)
+  saveSuccessToUpdates  Boolean  @default(true)
+  roeyNudgesInCenter    Boolean  @default(true)
+  osNotificationsEnabled Boolean @default(false)
+  osImportant          Boolean  @default(true)
+  osNudge               Boolean  @default(true)
+  osWeeklyDigest        Boolean  @default(false)
+  osActionErrors        Boolean  @default(false)
+  osSuccess             Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

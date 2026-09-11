@@ -20,6 +20,7 @@ import {
   type InlineActionProposal,
 } from "@/components/roey/RoeyChatCards";
 import { RoeyPlanPanel } from "@/components/roey/RoeyPlanPanel";
+import { useNotify } from "@/components/ToastProvider";
 
 type ModelOption = {
   id: string;
@@ -175,6 +176,7 @@ const QUICK_PROMPTS = [
 ];
 
 function RoeyPageInner() {
+  const { notify } = useNotify();
   const month = useSelectedMonth();
   const [tab, setTab] = useState<"CHAT" | "DO" | "FIT">("CHAT");
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -187,7 +189,6 @@ function RoeyPageInner() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [consent, setConsent] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
@@ -283,7 +284,6 @@ function RoeyPageInner() {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    setSuccess(null);
     try {
       const result = await api<
         Connection & { models: ModelOption[] }
@@ -295,7 +295,7 @@ function RoeyPageInner() {
       setModels(result.models);
       setApiKey("");
       setConsent(false);
-      setSuccess("החיבור ל-Google AI Studio הצליח");
+      void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "החיבור ל-Google AI Studio הצליח" });
       const forecastResult = await api<{ forecast: Forecast; risk: Risk }>(
         `/roey/forecast?month=${encodeURIComponent(month)}`,
       );
@@ -319,7 +319,7 @@ function RoeyPageInner() {
       setConnection((current) =>
         current ? { ...current, modelId } : current,
       );
-      setSuccess("המודל עודכן");
+      void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "המודל עודכן" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "בחירת המודל נכשלה");
     } finally {
@@ -354,7 +354,7 @@ function RoeyPageInner() {
       } else {
         await loadSessions();
       }
-      setSuccess("העדפות Roey נשמרו");
+      void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "העדפות Roey נשמרו" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "שמירת ההעדפות נכשלה");
     } finally {
@@ -370,7 +370,7 @@ function RoeyPageInner() {
       setDisconnectOpen(false);
       setMessages([]);
       setConversationId(null);
-      setSuccess("המפתח האישי נמחק. אם יש מפתח מובנה — Roey נשאר מחובר.");
+      void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "המפתח האישי נמחק. אם יש מפתח מובנה — Roey נשאר מחובר." });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "הניתוק נכשל");
@@ -428,7 +428,7 @@ function RoeyPageInner() {
     setMessages([]);
     setSessionsOpen(false);
     setError(null);
-    setSuccess("נפתח סשן חדש. הסשן הקודם נשמר ברשימה.");
+    void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "נפתח סשן חדש. הסשן הקודם נשמר ברשימה." });
   }
 
   async function openSession(session: SavedSession) {
@@ -479,7 +479,7 @@ function RoeyPageInner() {
       }
       setDeleteSessionId(null);
       await loadSessions();
-      setSuccess("הסשן נמחק.");
+      void notify({ kind: "SUCCESS", source: "ROEY", titleHe: "Roey", bodyHe: "הסשן נמחק." });
     } catch (err) {
       setError(err instanceof Error ? err.message : "מחיקת הסשן נכשלה");
     } finally {
@@ -609,7 +609,6 @@ function RoeyPageInner() {
       )}
 
       {error && <p className="form-error" role="alert">{error}</p>}
-      {success && <p className="form-success" role="status">{success}</p>}
 
       {tab === "CHAT" ? (
         <section className="roey-workspace ready-type">
@@ -746,7 +745,14 @@ function RoeyPageInner() {
                           updateAssistantEscalation(item.id, status)
                         }
                         onError={setError}
-                        onSuccess={setSuccess}
+                        onSuccess={(message) =>
+                          void notify({
+                            kind: "SUCCESS",
+                            source: "ROEY",
+                            titleHe: "Roey",
+                            bodyHe: message,
+                          })
+                        }
                         onForecastRefresh={() => void refreshForecast()}
                       />
                     ),

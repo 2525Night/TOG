@@ -31,6 +31,7 @@ import { PageHero } from "@/components/PageHero";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
 import { PageDock } from "@/components/PageDock";
+import { useNotify } from "@/components/ToastProvider";
 import Link from "next/link";
 
 type Account = { id: string; name: string; kind: string; currentBalance: string };
@@ -376,6 +377,7 @@ function MoneyInner() {
   const router = useRouter();
   const search = useSearchParams();
   const month = useSelectedMonth();
+  const { notify } = useNotify();
   const tabRaw = search.get("tab");
   const tab =
     tabRaw === "import" ? "import" : tabRaw === "fixed" ? "fixed" : "txs";
@@ -402,8 +404,18 @@ function MoneyInner() {
   const [monthFacts, setMonthFacts] = useState<MonthFacts | null>(null);
   const [userCats, setUserCats] = useState<UserCat[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const flash = useCallback(
+    (bodyHe: string, titleHe = "תנועות") => {
+      void notify({
+        kind: "SUCCESS",
+        source: "MONEY",
+        titleHe,
+        bodyHe,
+      });
+    },
+    [notify],
+  );
   const [showMonthFlow, setShowMonthFlow] = useState(false);
 
   const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
@@ -1002,7 +1014,7 @@ function MoneyInner() {
           ? ` · נשמר בחודש ${labelMonthHe(savedMonth)}`
           : "";
         if (chargeRes.mode === "INSTALLMENTS") {
-          setMsg(
+          flash(
             `נרשם ${formatIls(chargeRes.thisMonthCharge)} בהוצאות החודש` +
               (chargeRes.futureCommitment > 0
                 ? ` · ${formatIls(chargeRes.futureCommitment)} נשמרו כתשלומים בכרטיס`
@@ -1010,7 +1022,7 @@ function MoneyInner() {
               monthNote,
           );
         } else {
-          setMsg(
+          flash(
             `נרשמה קנייה בכרטיס · −${formatIls(chargeRes.thisMonthCharge)} · יתרת כרטיס עודכנה` +
               monthNote,
           );
@@ -1132,13 +1144,13 @@ function MoneyInner() {
           ...emptyAddDraft("expense", month),
           bookedAt: addDraft.bookedAt,
         });
-        setMsg(
+        flash(
           `נשמר ${signed} ${bucket}${monthNote} · לחצו על הצ׳יפ הבא או «רשום את כל הפתוחות»`,
         );
         setCommitmentOffer(null);
       } else {
         setAddDraft(null);
-        setMsg(
+        flash(
           direction === "INCOME"
             ? `ההכנסה נשמרה · ${signed} ${bucket}${monthNote}`
             : `ההוצאה נשמרה · ${signed} ${bucket}${monthNote}`,
@@ -1203,7 +1215,7 @@ function MoneyInner() {
       const parts: string[] = [];
       if (accountCount) parts.push(`${accountCount} מהעו״ש`);
       if (cardCount) parts.push(`${cardCount} באשראי`);
-      setMsg(
+      flash(
         parts.length
           ? `נרשמו הוצאות קבועות: ${parts.join(" · ")}`
           : `נרשמו ${list.length} הוצאות קבועות יחד`,
@@ -1235,9 +1247,9 @@ function MoneyInner() {
       );
       await refresh();
       if (res.chargedCount === 0) {
-        setMsg("אין תשלומי אשראי לרישום לחודש זה");
+        flash("אין תשלומי אשראי לרישום לחודש זה");
       } else {
-        setMsg(
+        flash(
           `נרשמו ${res.chargedCount} תשלומי אשראי · ${formatIls(res.chargedTotal)}`,
         );
       }
@@ -1264,7 +1276,7 @@ function MoneyInner() {
         }),
       });
       setCommitmentOffer(null);
-      setMsg(`נשמרה התחייבות קבועה מ־${month}`);
+      flash(`נשמרה התחייבות קבועה מ־${month}`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1305,7 +1317,7 @@ function MoneyInner() {
           startMonth: month,
         }),
       });
-      setMsg(
+      flash(
         viaCard
           ? `נוספה הוראת קבע באשראי מ־${month} — תופיע בצ׳יפים כמו שכירות, ותירשם כקנייה בכרטיס בכל חודש`
           : `נוספה הוצאה קבועה מ־${month} — תופיע בצ׳יפים לחודשים הרלוונטיים`,
@@ -1338,7 +1350,7 @@ function MoneyInner() {
     setPendingConfirm(null);
     try {
       await api(`/budget/commitments/${id}/deactivate`, { method: "POST" });
-      setMsg("ההוצאה הקבועה הוסרה");
+      flash("ההוצאה הקבועה הוסרה");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1349,7 +1361,6 @@ function MoneyInner() {
   async function onUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setMsg(null);
     const form = e.currentTarget;
     const fileInput = form.elements.namedItem("file") as HTMLInputElement;
     const file = fileInput.files?.[0];
@@ -1380,7 +1391,7 @@ function MoneyInner() {
         params.set("tab", "import");
         router.replace(`/app/money?${params.toString()}`, { scroll: false });
       }
-      setMsg(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`);
+      flash(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`);
       form.reset();
       setUploadFileName(null);
       setUploadDragOver(false);
@@ -1439,7 +1450,7 @@ function MoneyInner() {
           overrides,
         }),
       });
-      setMsg(`יובאו ${res.imported} תנועות.`);
+      flash(`יובאו ${res.imported} תנועות.`);
       setDraft(null);
       setEditable([]);
       await refresh();
@@ -1463,7 +1474,7 @@ function MoneyInner() {
       });
       setDraft(null);
       setEditable([]);
-      setMsg("הייבוא בוטל.");
+      flash("הייבוא בוטל.");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1479,7 +1490,7 @@ function MoneyInner() {
         method: "POST",
         body: "{}",
       });
-      setMsg(`בוטל ייבוא — הוסרו ${res.removed} תנועות.`);
+      flash(`בוטל ייבוא — הוסרו ${res.removed} תנועות.`);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -1538,7 +1549,7 @@ function MoneyInner() {
       const offMonth =
         /^\d{4}-\d{2}$/.test(savedMonth) && savedMonth !== month;
       await refresh();
-      setMsg(
+      flash(
         similar > 0
           ? `עודכן · הוחל על ${similar} דומים נוספים`
           : offMonth
@@ -1632,7 +1643,7 @@ function MoneyInner() {
     try {
       await api(`/transactions/${t.id}`, { method: "DELETE" });
       await refresh();
-      setMsg("התנועה נמחקה");
+      flash("התנועה נמחקה");
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
     } finally {
@@ -1676,7 +1687,7 @@ function MoneyInner() {
         installmentCount: "3",
         loanId: "",
       });
-      setMsg(
+      flash(
         "הפריסה נמחקה · עדכנו סכום או מספר תשלומים ושמרו מחדש",
       );
     } catch (err) {
@@ -2212,7 +2223,7 @@ function MoneyInner() {
           {error}
         </p>
       )}
-      {msg && <p className="badge good">{msg}</p>}
+      
 
       {pendingConfirm?.kind === "delete-tx" && (
         <ConfirmPanel

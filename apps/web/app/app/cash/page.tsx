@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PageHero } from "@/components/PageHero";
 import { ConfirmPanel } from "@/components/ConfirmPanel";
 import { PageDock } from "@/components/PageDock";
+import { useNotify } from "@/components/ToastProvider";
 
 type Account = {
   id: string;
@@ -91,11 +92,11 @@ function CashJournalInner() {
   const search = useSearchParams();
   const focusRef = search.get("ref");
   const formRef = useRef<HTMLDivElement | null>(null);
+  const { notify } = useNotify();
 
   const [cash, setCash] = useState<Account | null>(null);
   const [items, setItems] = useState<Tx[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
@@ -261,7 +262,7 @@ function CashJournalInner() {
       });
       resetForm();
       setAddMode(null);
-      setMsg(`נשמר ביומן · −${formatIls(n)} · יתרה עודכנה`);
+      void notify({ kind: "SUCCESS", source: "CASH", titleHe: "מזומן", bodyHe: `נשמר ביומן · −${formatIls(n)} · יתרה עודכנה` });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -291,7 +292,7 @@ function CashJournalInner() {
       resetForm();
       setAddMode(null);
       setView("journal");
-      setMsg(`משיכה נרשמה · −${formatIls(n)} בעו״ש · +${formatIls(n)} בכיס`);
+      void notify({ kind: "SUCCESS", source: "CASH", titleHe: "מזומן", bodyHe: `משיכה נרשמה · −${formatIls(n)} בעו״ש · +${formatIls(n)} בכיס` });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -332,7 +333,7 @@ function CashJournalInner() {
       resetForm();
       setAddMode(null);
       setView("journal");
-      setMsg(`יומן התחיל · יש לכם ${formatIls(n)} במזומן`);
+      void notify({ kind: "SUCCESS", source: "CASH", titleHe: "מזומן", bodyHe: `יומן התחיל · יש לכם ${formatIls(n)} במזומן` });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -348,7 +349,7 @@ function CashJournalInner() {
       await api(`/transactions/${tx.id}`, { method: "DELETE" });
       setConfirmDel(null);
       setDetail(null);
-      setMsg("נמחק מהיומן · היתרה עודכנה");
+      void notify({ kind: "SUCCESS", source: "CASH", titleHe: "מזומן", bodyHe: "נמחק מהיומן · היתרה עודכנה" });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "שגיאה");
@@ -439,11 +440,7 @@ function CashJournalInner() {
           {error}
         </p>
       ) : null}
-      {msg ? (
-        <p className="muted" role="status" data-testid="cash-status">
-          {msg}
-        </p>
-      ) : null}
+      
 
       {view !== "atm" && bootLoading ? (
         <section className="card" aria-busy="true" data-testid="cash-loading">
