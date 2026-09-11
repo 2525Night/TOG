@@ -679,13 +679,10 @@ function pageRoey() {
     return shell(
       `
       ${period}
-      ${pageHero({
-        kicker: "המלווה הפיננסי שלך",
-        amount: "2",
-        unit: "ממתינים · לעשות",
-        answer: "אותות קטנים — בלי לחץ.",
-        size: "sm",
-      })}
+      <div class="pg-head">
+        <div class="k">לעשות</div>
+        <div class="ttl">2 ממתינים · אותות קטנים בלי לחץ</div>
+      </div>
       <div class="todo-stack">
         <article><div class="badge">Roey שם לב</div><p>משכנתא בעוד 4 ימים · ${nis(SEED.loan.monthly)}</p><span>הזכר לי בעוד שבוע</span></article>
         <article><div class="badge">המלצה</div><p>להקצות ${nis(400)} לחופשה מהנותר</p><span>פתח הקצאה</span></article>
@@ -697,13 +694,10 @@ function pageRoey() {
     return shell(
       `
       ${period}
-      ${pageHero({
-        kicker: "התאמה",
-        amount: "Roey",
-        unit: "חיבור · Google AI Studio",
-        answer: "בלי חיבור — אין תשובות חיות.",
-        size: "sm",
-      })}
+      <div class="pg-head">
+        <div class="k">התאמה</div>
+        <div class="ttl">חיבור · Google AI Studio</div>
+      </div>
       <div class="connect">
         <p>חברו את Roey ל-Google AI Studio</p>
         <span class="fab">להתאמת החיבור</span>
@@ -712,7 +706,7 @@ function pageRoey() {
       d
     );
   }
-  /* Chat opens straight into companion UI — no void-hero metric block */
+  /* Chat opens straight into companion UI — no void-hero / mood metric block */
   return shell(
     `
     ${period}
