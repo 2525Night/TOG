@@ -416,6 +416,20 @@ function MoneyInner() {
     },
     [notify],
   );
+  const importFail = useCallback(
+    (bodyHe: string, persist = true) => {
+      void notify({
+        kind: "ERROR",
+        source: "MONEY",
+        titleHe: "ייבוא",
+        bodyHe,
+        actionUrl: "/app/money?tab=import",
+        ttlSeconds: 7,
+        persist,
+      });
+    },
+    [notify],
+  );
   const [showMonthFlow, setShowMonthFlow] = useState(false);
 
   const [addDraft, setAddDraft] = useState<AddDraft | null>(null);
@@ -1365,7 +1379,7 @@ function MoneyInner() {
     const fileInput = form.elements.namedItem("file") as HTMLInputElement;
     const file = fileInput.files?.[0];
     if (!file) {
-      setError("בחרו קובץ CSV / PDF / תמונה");
+      importFail("בחרו קובץ Excel, CSV, PDF או תמונה", false);
       return;
     }
     setBusy(true);
@@ -1391,13 +1405,13 @@ function MoneyInner() {
         params.set("tab", "import");
         router.replace(`/app/money?${params.toString()}`, { scroll: false });
       }
-      flash(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`);
+      flash(`זוהו ${result.draft.length} תנועות — בדקו ואשרו.`, "ייבוא");
       form.reset();
       setUploadFileName(null);
       setUploadDragOver(false);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      importFail(err instanceof Error ? err.message : "הייבוא נכשל");
     } finally {
       setBusy(false);
     }
@@ -1450,7 +1464,7 @@ function MoneyInner() {
           overrides,
         }),
       });
-      flash(`יובאו ${res.imported} תנועות.`);
+      flash(`יובאו ${res.imported} תנועות.`, "ייבוא");
       setDraft(null);
       setEditable([]);
       await refresh();
@@ -1458,7 +1472,7 @@ function MoneyInner() {
       params.set("month", res.defaultMonth || month);
       router.replace(`/app/money?${params.toString()}`, { scroll: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      importFail(err instanceof Error ? err.message : "אישור הייבוא נכשל");
     } finally {
       setBusy(false);
     }
@@ -1474,10 +1488,10 @@ function MoneyInner() {
       });
       setDraft(null);
       setEditable([]);
-      flash("הייבוא בוטל.");
+      flash("הייבוא בוטל.", "ייבוא");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      importFail(err instanceof Error ? err.message : "ביטול הייבוא נכשל", false);
     } finally {
       setBusy(false);
     }
@@ -1490,10 +1504,10 @@ function MoneyInner() {
         method: "POST",
         body: "{}",
       });
-      flash(`בוטל ייבוא — הוסרו ${res.removed} תנועות.`);
+      flash(`בוטל ייבוא — הוסרו ${res.removed} תנועות.`, "ייבוא");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "שגיאה");
+      importFail(err instanceof Error ? err.message : "ביטול הייבוא נכשל");
     } finally {
       setBusy(false);
     }
@@ -2218,7 +2232,7 @@ function MoneyInner() {
 
       {/* hub-tabs moved to PageDock at bottom */}
 
-      {error && (
+      {error && tab !== "import" && (
         <p className="form-error" role="alert">
           {error}
         </p>
@@ -3315,8 +3329,9 @@ function MoneyInner() {
             <div className="import-upload-head">
               <strong>העלאת דף חשבון</strong>
               <p className="muted">
-                CSV מ־כאל / MAX / בנק, PDF או תמונה — נחלץ לטיוטה, אתם מאשרים
-                לפני שמירה. בעמודות מוכרות: תאריך, סכום/חיוב/זכות, תיאור/בית עסק.
+                Excel או CSV מ־כאל / MAX / בנק, PDF או תמונה — נחלץ לטיוטה,
+                אתם מאשרים לפני שמירה. בעמודות מוכרות: תאריך, סכום/חיוב/זכות,
+                תיאור/בית עסק.
               </p>
             </div>
 
@@ -3355,7 +3370,7 @@ function MoneyInner() {
                 className="import-file-input"
                 name="file"
                 type="file"
-                accept="image/*,.csv,.pdf,text/csv,application/pdf,text/plain,*/*"
+                accept="image/*,.csv,.pdf,.xlsx,.xls,.xlsm,.xlsb,.ods,text/csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,*/*"
                 required
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -3369,7 +3384,7 @@ function MoneyInner() {
                 {uploadFileName || "בחרו קובץ או גררו לכאן"}
               </span>
               <span className="import-file-drop-hint muted">
-                PDF · CSV · תמונה · עד ~3.5MB (תמונות נדחסות אוטומטית)
+                PDF · Excel · CSV · תמונה · עד ~3.5MB (תמונות נדחסות אוטומטית)
               </span>
             </label>
 

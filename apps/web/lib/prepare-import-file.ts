@@ -53,7 +53,7 @@ async function compressImage(file: File): Promise<File> {
 
 /**
  * Shrink phone photos so multipart stays under Vercel’s request body limit.
- * CSV/PDF pass through (with a hard size check).
+ * CSV/PDF/Excel pass through (with a hard size check).
  */
 export async function prepareImportFile(file: File): Promise<File> {
   let next = file;
@@ -66,7 +66,7 @@ export async function prepareImportFile(file: File): Promise<File> {
   }
   if (next.size > VERCEL_SAFE_MAX) {
     throw new Error(
-      "הקובץ גדול מדי לשליחה מהטלפון (מקסימום כ־3.5MB אחרי דחיסה). נסו CSV או תמונה קטנה יותר.",
+      "הקובץ גדול מדי לשליחה מהטלפון (מקסימום כ־3.5MB אחרי דחיסה). נסו Excel/CSV או תמונה קטנה יותר.",
     );
   }
   return next;
