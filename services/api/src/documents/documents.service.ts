@@ -23,6 +23,7 @@ import {
   parseCsvTransactions,
   parseUnstructuredText,
 } from "./extract";
+import { extractExcel } from "./extract-xlsx";
 
 export type ConfirmOverride = {
   index: number;
@@ -103,10 +104,10 @@ export class DocumentsService {
     }
     const originalName = file.originalname || "upload";
     const mimeType = file.mimetype || "application/octet-stream";
-    const kind = detectKind(originalName, mimeType);
+    const kind = detectKind(originalName, mimeType, file.buffer);
     if (!kind) {
       throw new BadRequestException(
-        "סוג קובץ לא נתמך. העלו CSV, PDF או תמונה (PNG/JPG/WEBP).",
+        "סוג קובץ לא נתמך. העלו Excel, CSV, PDF או תמונה (PNG/JPG/WEBP).",
       );
     }
 
@@ -117,6 +118,10 @@ export class DocumentsService {
       if (kind === "csv") {
         text = file.buffer.toString("utf8");
         draft = parseCsvTransactions(text);
+      } else if (kind === "xlsx") {
+        const excel = extractExcel(file.buffer);
+        draft = excel.draft;
+        text = excel.text;
       } else if (kind === "pdf") {
         text = await extractTextFromPdf(file.buffer);
         if (text.replace(/\s/g, "").length < 20) {
@@ -147,6 +152,11 @@ export class DocumentsService {
           "קריאת ה־PDF ארכה יותר מדי. נסו קובץ קצר יותר, או ייצאו CSV מהבנק.",
         );
       }
+      if (code === "EXCEL_UNREADABLE") {
+        throw new BadRequestException(
+          "לא הצלחנו לקרוא את קובץ האקסל. נסו לשמור כ־xlsx, או ייצאו CSV מהבנק.",
+        );
+      }
       // eslint-disable-next-line no-console
       console.warn(
         JSON.stringify({
@@ -159,7 +169,9 @@ export class DocumentsService {
       throw new BadRequestException(
         kind === "pdf"
           ? "לא הצלחנו לקרוא את ה־PDF. נסו CSV מהבנק או תמונה חדה של הדף."
-          : "חילוץ המסמך נכשל. נסו קובץ אחר או CSV מהבנק.",
+          : kind === "xlsx"
+            ? "לא הצלחנו לקרוא את קובץ האקסל. נסו לשמור כ־xlsx או לייצא CSV."
+            : "חילוץ המסמך נכשל. נסו קובץ אחר או CSV מהבנק.",
       );
     }
 
@@ -177,9 +189,11 @@ export class DocumentsService {
       throw new BadRequestException(
         kind === "csv"
           ? "לא זוהו תנועות ב־CSV. צפו עמודות: תאריך, סכום, תיאור."
-          : kind === "pdf"
-            ? "הקובץ נפתח אבל לא זיהינו תנועות. ייצאו CSV מהבנק (תאריך, סכום, תיאור)."
-            : "התמונה נקראה אבל לא זיהינו תנועות. נסו תמונה חדה יותר או CSV.",
+          : kind === "xlsx"
+            ? "לא זוהו תנועות באקסל. ודאו שיש עמודות תאריך, סכום או זכות/חובה, ותיאור."
+            : kind === "pdf"
+              ? "הקובץ נפתח אבל לא זיהינו תנועות. ייצאו CSV מהבנק (תאריך, סכום, תיאור)."
+              : "התמונה נקראה אבל לא זיהינו תנועות. נסו תמונה חדה יותר או CSV.",
       );
     }
 

@@ -131,7 +131,7 @@ async function writeIndexedToken(token: string | null) {
 async function parseError(res: Response) {
   if (res.status === 413) {
     throw new Error(
-      "הקובץ גדול מדי לשרת (מגבלת ענן). נסו CSV או תמונה/PDF קטנים יותר.",
+      "הקובץ גדול מדי לשרת (מגבלת ענן). נסו Excel/CSV או תמונה/PDF קטנים יותר.",
     );
   }
   let message = "שגיאת שרת";

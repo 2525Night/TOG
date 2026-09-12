@@ -13,6 +13,8 @@ async function main() {
     parseUnstructuredText,
     parseCsvTransactions,
     stitchStatementLines,
+    detectKind,
+    parseTabularTransactions,
   } = require("../services/api/src/documents/extract.ts");
   const {
     clusterTextItemsToLines,
@@ -134,6 +136,134 @@ async function main() {
     throw new Error(`pdf extract parse failed: ${JSON.stringify(fromPdf)}`);
   }
 
+  const {
+    parseExcelTransactions,
+    extractExcel,
+    excelSerialToDate,
+  } = require("../services/api/src/documents/extract-xlsx.ts");
+  const XLSX = require("xlsx");
+
+  const csvMime = Buffer.from(
+    "date,amount,description\n2026-03-01,50,פז\n",
+    "utf8",
+  );
+  if (detectKind("export.xls", "application/vnd.ms-excel", csvMime) !== "csv") {
+    throw new Error("vnd.ms-excel + CSV body should stay CSV");
+  }
+  if (detectKind("statement.xlsx", "application/octet-stream") !== "xlsx") {
+    throw new Error("xlsx extension should detect spreadsheet");
+  }
+  if (
+    detectKind(
+      "file",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ) !== "xlsx"
+  ) {
+    throw new Error("spreadsheetml MIME should detect spreadsheet");
+  }
+  const ole = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+  if (detectKind("old.xls", "application/vnd.ms-excel", ole) !== "xlsx") {
+    throw new Error(".xls OLE should detect spreadsheet");
+  }
+
+  function workbookToBuffer(aoaSheets) {
+    const wb = XLSX.utils.book_new();
+    for (const { name, rows, dates } of aoaSheets) {
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      if (dates) {
+        for (const { addr, serial } of dates) {
+          ws[addr] = { t: "n", v: serial, z: "yyyy-mm-dd" };
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    }
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  }
+
+  const hebrewExcel = workbookToBuffer([
+    {
+      name: "סיכום",
+      rows: [
+        ["יתרה", "1000"],
+        ["עודכן", "01/03/2026"],
+      ],
+    },
+    {
+      name: "תנועות",
+      rows: [
+        ["בנק הפועלים — דף חשבון"],
+        ["לתקופה 01/03/2026 - 31/03/2026"],
+        ["תאריך", "תיאור פעולה", "חובה", "זכות", "יתרה"],
+        ["01/03/2026", "פז תדלוק", 210.5, "", 14800],
+        ["02/03/2026", "משכורת", "", 12000, 26800],
+        ["03/03/2026", "סה״כ", 210.5, 12000, 26800],
+      ],
+    },
+  ]);
+  if (detectKind("bank.xlsx", "application/octet-stream", hebrewExcel) !== "xlsx") {
+    throw new Error("xlsx magic/ext should detect spreadsheet");
+  }
+  const excelRows = parseExcelTransactions(hebrewExcel);
+  if (excelRows.length !== 2) {
+    throw new Error(`excel hebrew expected 2 rows got ${excelRows.length} ${JSON.stringify(excelRows)}`);
+  }
+  const paz = excelRows.find((r) => /פז/.test(r.description));
+  const salary = excelRows.find((r) => /משכורת/.test(r.description));
+  if (!paz || Math.abs(paz.amount - 210.5) > 0.01) {
+    throw new Error(`excel debit amount: ${JSON.stringify(paz)}`);
+  }
+  if (paz.direction !== "EXPENSE") {
+    throw new Error(`excel debit should be expense, got ${paz.direction}`);
+  }
+  if (!salary || Math.abs(salary.amount - 12000) > 0.01) {
+    throw new Error(`excel credit amount: ${JSON.stringify(salary)}`);
+  }
+  if (salary.direction !== "INCOME") {
+    throw new Error(`excel credit should be income, got ${salary.direction}`);
+  }
+
+  const serial = Math.round(
+    (Date.UTC(2026, 2, 12) - Date.UTC(1899, 11, 30)) / 86400000,
+  );
+  const serialDate = excelSerialToDate(serial);
+  if (!serialDate || serialDate.getFullYear() !== 2026 || serialDate.getMonth() !== 2 || serialDate.getDate() !== 12) {
+    throw new Error(`excel serial date failed: ${serial} -> ${serialDate}`);
+  }
+  const serialExcel = workbookToBuffer([
+    {
+      name: "Sheet1",
+      rows: [
+        ["תאריך", "סכום", "תיאור"],
+        [null, 88.2, "סופר"],
+      ],
+      dates: [{ addr: "A2", serial }],
+    },
+  ]);
+  const serialRows = parseExcelTransactions(serialExcel);
+  if (serialRows.length !== 1) {
+    throw new Error(`serial excel expected 1 got ${serialRows.length}`);
+  }
+  if (!serialRows[0].bookedAt.startsWith("2026-03-12")) {
+    throw new Error(`serial excel date ${serialRows[0].bookedAt}`);
+  }
+  if (Math.abs(serialRows[0].amount - 88.2) > 0.01) {
+    throw new Error(`serial excel amount ${serialRows[0].amount}`);
+  }
+
+  const titledCsv = parseTabularTransactions([
+    ["דף חשבון כאל"],
+    ["תאריך עסקה", "שם בית עסק", "סכום"],
+    ["12/03/2026", "רמי לוי", "95.4"],
+  ]);
+  if (titledCsv.length !== 1 || Math.abs(titledCsv[0].amount - 95.4) > 0.01) {
+    throw new Error(`titled table failed: ${JSON.stringify(titledCsv)}`);
+  }
+
+  const extracted = extractExcel(hebrewExcel);
+  if (!extracted.text.includes("תיאור פעולה") || extracted.draft.length !== 2) {
+    throw new Error("extractExcel preview/draft mismatch");
+  }
+
   console.log("OK extract parsers", {
     csv: csv.length,
     statement: statement.length,
@@ -141,6 +271,8 @@ async function main() {
     stitched: fromStitch.length,
     clustered: fromCluster.length,
     pdf: fromPdf.length,
+    excel: excelRows.length,
+    serialExcel: serialRows.length,
   });
 }
 

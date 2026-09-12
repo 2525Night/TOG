@@ -1379,7 +1379,7 @@ function MoneyInner() {
     const fileInput = form.elements.namedItem("file") as HTMLInputElement;
     const file = fileInput.files?.[0];
     if (!file) {
-      importFail("בחרו קובץ CSV, PDF או תמונה", false);
+      importFail("בחרו קובץ Excel, CSV, PDF או תמונה", false);
       return;
     }
     setBusy(true);
@@ -3329,8 +3329,9 @@ function MoneyInner() {
             <div className="import-upload-head">
               <strong>העלאת דף חשבון</strong>
               <p className="muted">
-                CSV מ־כאל / MAX / בנק, PDF או תמונה — נחלץ לטיוטה, אתם מאשרים
-                לפני שמירה. בעמודות מוכרות: תאריך, סכום/חיוב/זכות, תיאור/בית עסק.
+                Excel או CSV מ־כאל / MAX / בנק, PDF או תמונה — נחלץ לטיוטה,
+                אתם מאשרים לפני שמירה. בעמודות מוכרות: תאריך, סכום/חיוב/זכות,
+                תיאור/בית עסק.
               </p>
             </div>
 
@@ -3369,7 +3370,7 @@ function MoneyInner() {
                 className="import-file-input"
                 name="file"
                 type="file"
-                accept="image/*,.csv,.pdf,text/csv,application/pdf,text/plain,*/*"
+                accept="image/*,.csv,.pdf,.xlsx,.xls,.xlsm,.xlsb,.ods,text/csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,*/*"
                 required
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -3383,7 +3384,7 @@ function MoneyInner() {
                 {uploadFileName || "בחרו קובץ או גררו לכאן"}
               </span>
               <span className="import-file-drop-hint muted">
-                PDF · CSV · תמונה · עד ~3.5MB (תמונות נדחסות אוטומטית)
+                PDF · Excel · CSV · תמונה · עד ~3.5MB (תמונות נדחסות אוטומטית)
               </span>
             </label>
 

@@ -28,7 +28,7 @@ export type DraftRow = {
   needsReview?: boolean;
 };
 
-export type DetectedKind = "csv" | "pdf" | "image";
+export type DetectedKind = "csv" | "pdf" | "image" | "xlsx";
 
 export type ExtractMeta = {
   statementFrom?: string;
@@ -36,20 +36,40 @@ export type ExtractMeta = {
   defaultMonth?: string;
 };
 
+const SPREADSHEET_EXT = [".xlsx", ".xlsm", ".xls", ".xlsb", ".ods"];
+
 export function detectKind(
   originalName: string,
   mimeType: string,
+  bytes?: Buffer,
 ): DetectedKind | null {
   const lower = (originalName || "").toLowerCase();
   const mime = (mimeType || "").toLowerCase();
+  const spreadsheetExt = SPREADSHEET_EXT.some((ext) => lower.endsWith(ext));
+  const csvExt = lower.endsWith(".csv");
 
-  if (
-    lower.endsWith(".csv") ||
-    mime === "text/csv" ||
-    mime === "application/vnd.ms-excel"
-  ) {
-    return "csv";
+  if (spreadsheetExt) {
+    if (bytes && sniffSpreadsheet(bytes)) return "xlsx";
+    if (bytes && looksLikeCsvText(bytes)) return "csv";
+    return "xlsx";
   }
+  if (bytes && sniffSpreadsheet(bytes) && !csvExt) return "xlsx";
+  if (
+    mime.includes("spreadsheetml") ||
+    mime.includes("excel.sheet") ||
+    mime === "application/vnd.oasis.opendocument.spreadsheet"
+  ) {
+    return "xlsx";
+  }
+
+  if (csvExt || mime === "text/csv") return "csv";
+
+  if (mime === "application/vnd.ms-excel" || mime === "application/excel") {
+    if (bytes && sniffSpreadsheet(bytes)) return "xlsx";
+    if (bytes && looksLikeCsvText(bytes)) return "csv";
+    return "xlsx";
+  }
+
   if (lower.endsWith(".pdf") || mime === "application/pdf") {
     return "pdf";
   }
@@ -63,7 +83,51 @@ export function detectKind(
   ) {
     return "image";
   }
+  if (bytes && looksLikeCsvText(bytes) && !sniffSpreadsheet(bytes)) {
+    return "csv";
+  }
   return null;
+}
+
+/** ZIP Office files start with PK; OLE Compound (.xls) starts with D0 CF 11 E0. */
+export function sniffSpreadsheet(bytes: Buffer): boolean {
+  if (bytes.length < 8) return false;
+  if (
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  ) {
+    const head = bytes.subarray(0, Math.min(bytes.length, 2048)).toString("latin1");
+    return (
+      head.includes("xl/") ||
+      head.includes("[Content_Types].xml") ||
+      head.includes("workbook.xml") ||
+      head.includes("spreadsheetml")
+    );
+  }
+  if (
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0
+  ) {
+    const head = bytes.subarray(0, Math.min(bytes.length, 8192)).toString("latin1");
+    return /Workbook|Book|Excel|Worksheet|BIFF/i.test(head);
+  }
+  return false;
+}
+
+function looksLikeCsvText(bytes: Buffer, sampleSize = 4096): boolean {
+  const sample = bytes.subarray(0, Math.min(bytes.length, sampleSize));
+  if (sample.includes(0)) return false;
+  const text = sample.toString("utf8").replace(/^\uFEFF/, "");
+  const first = text.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
+  if (!first) return false;
+  const commas = (first.match(/,/g) ?? []).length;
+  const semis = (first.match(/;/g) ?? []).length;
+  const tabs = (first.match(/\t/g) ?? []).length;
+  return commas >= 2 || semis >= 2 || tabs >= 2;
 }
 
 export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
@@ -452,6 +516,74 @@ export function draftQuality(draft: DraftRow[]) {
   };
 }
 
+const DATE_ALIASES = [
+  "date",
+  "bookedat",
+  "תאריך",
+  "תאריך עסקה",
+  "תאריך חיוב",
+  "תאריך ערך",
+  "תאריך רישום",
+  "תאריך פעולה",
+  "transaction date",
+  "value date",
+  "posting date",
+];
+const AMOUNT_ALIASES = [
+  "amount",
+  "sum",
+  "סכום",
+  "סכום עסקה",
+  "סכום חיוב",
+  "סכום בש\"ח",
+  "סכום בש״ח",
+  "original amount",
+];
+const DESC_ALIASES = [
+  "description",
+  "desc",
+  "memo",
+  "תיאור",
+  "פרטים",
+  "בית עסק",
+  "שם בית העסק",
+  "שם בית עסק",
+  "תיאור פעולה",
+  "תיאור תנועה",
+  "פרטי פעולה",
+  "merchant",
+  "details",
+];
+const TYPE_ALIASES = ["type", "direction", "סוג", "סוג עסקה", "סוג תנועה"];
+const CATEGORY_ALIASES = ["category", "קטגוריה"];
+const CREDIT_ALIASES = [
+  "credit",
+  "זכות",
+  "הפקדה",
+  "הכנסה",
+  "incoming",
+  "זיכוי",
+];
+const DEBIT_ALIASES = [
+  "debit",
+  "חובה",
+  "משיכה",
+  "הוצאה",
+  "outgoing",
+  "חיוב",
+  "סכום לחיוב",
+];
+const BALANCE_ALIASES = [
+  "balance",
+  "יתרה",
+  "יתרה מצטברת",
+  "יתרה בש\"ח",
+  "יתרה בש״ח",
+  "running balance",
+];
+
+const TABULAR_ROW_CAP = 2_000;
+
 export function parseCsvTransactions(text: string): DraftRow[] {
   const lines = text
     .replace(/^\uFEFF/, "")
@@ -459,64 +591,36 @@ export function parseCsvTransactions(text: string): DraftRow[] {
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length < 2) return [];
+  return parseTabularTransactions(
+    lines.map((line) => splitCsvLine(line)),
+    "ייבוא CSV",
+  );
+}
 
-  const headerCells = splitCsvLine(lines[0]).map((h) =>
-    h.trim().toLowerCase(),
+/**
+ * Shared CSV/Excel table parser. Finds a header row (Israeli bank Excel
+ * often has title rows first) then maps date / amount / credit / debit.
+ */
+export function parseTabularTransactions(
+  table: string[][],
+  fallbackDescription = "ייבוא",
+): DraftRow[] {
+  if (table.length < 2) return [];
+  const headerIdx = findHeaderRowIndex(table);
+  if (headerIdx < 0) return [];
+
+  const headerCells = table[headerIdx].map((h) =>
+    (h || "").trim().toLowerCase(),
   );
   const idx = {
-    date: findCol(headerCells, [
-      "date",
-      "bookedat",
-      "תאריך",
-      "תאריך עסקה",
-      "תאריך חיוב",
-      "transaction date",
-      "value date",
-    ]),
-    amount: findCol(headerCells, [
-      "amount",
-      "sum",
-      "סכום",
-      "סכום עסקה",
-      "סכום חיוב",
-      "original amount",
-    ]),
-    description: findCol(headerCells, [
-      "description",
-      "desc",
-      "memo",
-      "תיאור",
-      "פרטים",
-      "בית עסק",
-      "שם בית העסק",
-      "merchant",
-      "details",
-    ]),
-    type: findCol(headerCells, ["type", "direction", "סוג", "סוג עסקה"]),
-    category: findCol(headerCells, ["category", "קטגוריה"]),
-    credit: findCol(headerCells, [
-      "credit",
-      "זכות",
-      "הפקדה",
-      "הכנסה",
-      "incoming",
-      "זיכוי",
-    ]),
-    debit: findCol(headerCells, [
-      "debit",
-      "חובה",
-      "משיכה",
-      "הוצאה",
-      "outgoing",
-      "חיוב",
-      "סכום לחיוב",
-    ]),
-    balance: findCol(headerCells, [
-      "balance",
-      "יתרה",
-      "יתרה מצטברת",
-      "running balance",
-    ]),
+    date: findCol(headerCells, DATE_ALIASES),
+    amount: findCol(headerCells, AMOUNT_ALIASES),
+    description: findCol(headerCells, DESC_ALIASES),
+    type: findCol(headerCells, TYPE_ALIASES),
+    category: findCol(headerCells, CATEGORY_ALIASES),
+    credit: findCol(headerCells, CREDIT_ALIASES),
+    debit: findCol(headerCells, DEBIT_ALIASES),
+    balance: findCol(headerCells, BALANCE_ALIASES),
   };
   if (idx.date < 0 || (idx.amount < 0 && idx.credit < 0 && idx.debit < 0)) {
     return [];
@@ -526,24 +630,23 @@ export function parseCsvTransactions(text: string): DraftRow[] {
   const rows: DraftRow[] = [];
   let prevBalance: number | null = null;
 
-  for (const line of lines.slice(1)) {
-    const cells = splitCsvLine(line);
+  for (const cells of table.slice(headerIdx + 1)) {
+    if (rows.length >= TABULAR_ROW_CAP) break;
     const booked = parseDate(cells[idx.date] || "");
     if (!booked) continue;
 
     const creditRaw =
-      idx.credit >= 0
-        ? Number((cells[idx.credit] || "").replace(/[₪,\s]/g, ""))
-        : NaN;
+      idx.credit >= 0 ? parseMoneyCell(cells[idx.credit] || "") : NaN;
     const debitRaw =
-      idx.debit >= 0
-        ? Number((cells[idx.debit] || "").replace(/[₪,\s]/g, ""))
-        : NaN;
+      idx.debit >= 0 ? parseMoneyCell(cells[idx.debit] || "") : NaN;
     const balanceRaw =
-      idx.balance >= 0
-        ? Number((cells[idx.balance] || "").replace(/[₪,\s]/g, ""))
-        : NaN;
+      idx.balance >= 0 ? parseMoneyCell(cells[idx.balance] || "") : NaN;
     const balance = Number.isFinite(balanceRaw) ? balanceRaw : null;
+
+    if (isSummaryRow(cells, idx.description)) {
+      if (balance != null) prevBalance = balance;
+      continue;
+    }
 
     let amount = 0;
     let credit: number | null = null;
@@ -560,8 +663,7 @@ export function parseCsvTransactions(text: string): DraftRow[] {
     }
 
     if (idx.amount >= 0) {
-      const amountRaw = (cells[idx.amount] || "").replace(/[₪,\s]/g, "");
-      const parsed = Number(amountRaw);
+      const parsed = parseMoneyCell(cells[idx.amount] || "");
       if (Number.isFinite(parsed) && parsed !== 0) {
         signedFromAmount = parsed;
         if (amount < 0.01) {
@@ -600,7 +702,8 @@ export function parseCsvTransactions(text: string): DraftRow[] {
       if (signedFromAmount < 0) debit = Math.abs(signedFromAmount);
     }
 
-    const description = (cells[idx.description] || "").trim() || "ייבוא CSV";
+    const description =
+      (cells[idx.description] || "").trim() || fallbackDescription;
     const typeHint = idx.type >= 0 ? cells[idx.type] : null;
 
     rows.push(
@@ -621,6 +724,55 @@ export function parseCsvTransactions(text: string): DraftRow[] {
     if (balance != null) prevBalance = balance;
   }
   return rows;
+}
+
+function findHeaderRowIndex(table: string[][]): number {
+  const limit = Math.min(table.length - 1, 40);
+  let bestIdx = -1;
+  let bestScore = -1;
+  for (let i = 0; i < limit; i++) {
+    const score = scoreHeaderRow(table[i] || []);
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  return bestScore >= 10 ? bestIdx : -1;
+}
+
+function scoreHeaderRow(cells: string[]): number {
+  const headers = cells.map((h) => (h || "").trim().toLowerCase());
+  if (!headers.some((h) => h.length > 0)) return -1;
+  const date = findCol(headers, DATE_ALIASES);
+  const amount = findCol(headers, AMOUNT_ALIASES);
+  const credit = findCol(headers, CREDIT_ALIASES);
+  const debit = findCol(headers, DEBIT_ALIASES);
+  if (date < 0 || (amount < 0 && credit < 0 && debit < 0)) return -1;
+  let score = 10;
+  if (findCol(headers, DESC_ALIASES) >= 0) score += 3;
+  if (amount >= 0) score += 2;
+  if (credit >= 0) score += 2;
+  if (debit >= 0) score += 2;
+  if (findCol(headers, BALANCE_ALIASES) >= 0) score += 1;
+  if (findCol(headers, TYPE_ALIASES) >= 0) score += 1;
+  return score;
+}
+
+function parseMoneyCell(raw: string): number {
+  const s = raw.replace(/[₪$€,\s]/g, "").replace(/[־–—]/g, "-");
+  if (!s) return NaN;
+  return Number(s);
+}
+
+function isSummaryRow(cells: string[], descriptionIdx: number): boolean {
+  const desc = (
+    descriptionIdx >= 0 ? cells[descriptionIdx] : cells.join(" ")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(סה["״׳']?כ|סהכ|סיכום|totals?|subtotals?|יתרת\s*סגירה|יתרת\s*פתיחה)(?:\s|$)/i.test(
+    desc,
+  );
 }
 
 export function parseUnstructuredText(text: string): DraftRow[] {
@@ -1088,8 +1240,10 @@ function splitCsvLine(line: string): string[] {
 }
 
 function findCol(headers: string[], aliases: string[]) {
+  const exact = headers.findIndex((h) => aliases.some((a) => h === a));
+  if (exact >= 0) return exact;
   return headers.findIndex((h) =>
-    aliases.some((a) => h === a || h.includes(a)),
+    aliases.some((a) => a.length >= 2 && h.includes(a)),
   );
 }
 
@@ -1108,6 +1262,23 @@ function parseDate(raw: string): Date | null {
     if (year < 100) year += 2000;
     const d = new Date(year, month, day, 12, 0, 0);
     return Number.isNaN(d.getTime()) ? null : d;
+  }
+  // Unformatted Excel serial in a date column (days since 1899-12-30).
+  if (/^\d{5}(?:\.\d+)?$/.test(s)) {
+    const serial = Number(s);
+    if (serial >= 20000 && serial <= 80000) {
+      const utc = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86_400_000));
+      if (!Number.isNaN(utc.getTime())) {
+        return new Date(
+          utc.getUTCFullYear(),
+          utc.getUTCMonth(),
+          utc.getUTCDate(),
+          12,
+          0,
+          0,
+        );
+      }
+    }
   }
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
