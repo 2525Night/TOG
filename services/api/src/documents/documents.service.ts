@@ -121,7 +121,7 @@ export class DocumentsService {
         text = await extractTextFromPdf(file.buffer);
         if (text.replace(/\s/g, "").length < 20) {
           throw new BadRequestException(
-            "לא חולץ טקסט מה־PDF (ייתכן שמדובר בסריקה בלבד). נסו תמונה ברורה או CSV.",
+            "לא הצלחנו לקרוא את ה־PDF. אם זה סריקה או צילום — העלו תמונה חדה של הדף, או ייצאו CSV מהבנק.",
           );
         }
         draft = parseUnstructuredText(text);
@@ -129,23 +129,57 @@ export class DocumentsService {
         text = await extractTextFromImage(file.buffer);
         if (text.replace(/\s/g, "").length < 8) {
           throw new BadRequestException(
-            "OCR לא זיהה טקסט בתמונה. העלו תמונה חדה יותר או CSV.",
+            "לא זיהינו טקסט בתמונה. העלו תמונה חדה יותר, או ייצאו CSV מהבנק.",
           );
         }
         draft = parseUnstructuredText(text);
       }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      const message =
-        err instanceof Error ? err.message : "כשל בחילוץ מהמסמך";
-      throw new BadRequestException(`חילוץ נכשל: ${message}`);
+      const code = err instanceof Error ? err.message : "";
+      if (code.startsWith("PDF_TOO_MANY_PAGES")) {
+        throw new BadRequestException(
+          "ה־PDF ארוך מדי לייבוא. ייצאו CSV מהבנק, או העלו עד 20 עמודים.",
+        );
+      }
+      if (code === "PDF_TIMEOUT") {
+        throw new BadRequestException(
+          "קריאת ה־PDF ארכה יותר מדי. נסו קובץ קצר יותר, או ייצאו CSV מהבנק.",
+        );
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        JSON.stringify({
+          evt: "document_extract_failed",
+          kind,
+          bytes: file.size,
+          code: code.slice(0, 80),
+        }),
+      );
+      throw new BadRequestException(
+        kind === "pdf"
+          ? "לא הצלחנו לקרוא את ה־PDF. נסו CSV מהבנק או תמונה חדה של הדף."
+          : "חילוץ המסמך נכשל. נסו קובץ אחר או CSV מהבנק.",
+      );
     }
+
+    // eslint-disable-next-line no-console
+    console.info(
+      JSON.stringify({
+        evt: "document_extract_ok",
+        kind,
+        textChars: text.replace(/\s/g, "").length,
+        draftRows: draft.length,
+      }),
+    );
 
     if (draft.length === 0) {
       throw new BadRequestException(
         kind === "csv"
-          ? "לא זוהו תנועות ב־CSV. צפו עמודות: date,amount,description או תאריך,סכום,תיאור"
-          : "חולץ טקסט אך לא זוהו תנועות/תלוש לאישור. בדקו שהמסמך כולל תאריכים וסכומים ברורים.",
+          ? "לא זוהו תנועות ב־CSV. צפו עמודות: תאריך, סכום, תיאור."
+          : kind === "pdf"
+            ? "הקובץ נפתח אבל לא זיהינו תנועות. ייצאו CSV מהבנק (תאריך, סכום, תיאור)."
+            : "התמונה נקראה אבל לא זיהינו תנועות. נסו תמונה חדה יותר או CSV.",
       );
     }
 

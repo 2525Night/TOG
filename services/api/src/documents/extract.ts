@@ -4,6 +4,7 @@ import {
   normalizeMerchant,
   resolveCategory,
 } from "./category-resolver";
+import { extractPdfText } from "./extract-pdf";
 
 export type DraftRow = {
   direction: "INCOME" | "EXPENSE" | "TRANSFER";
@@ -66,48 +67,42 @@ export function detectKind(
 }
 
 export async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { PDFParse } = require("pdf-parse") as {
-    PDFParse: new (opts: { data: Buffer | Uint8Array }) => {
-      getText: () => Promise<{ text: string }>;
-      getScreenshot: (opts?: {
-        partial?: number[];
-        imageBuffer?: boolean;
-        scale?: number;
-      }) => Promise<{
-        pages: Array<{ data?: Uint8Array; dataUrl?: string }>;
-      }>;
-      destroy: () => Promise<void>;
-    };
+  return extractPdfText(buffer);
+}
+
+/**
+ * PDF text extractors often emit one table cell per line. Stitch until the
+ * next date so bank-statement parsers see a single row.
+ */
+export function stitchStatementLines(text: string): string {
+  const lines = text
+    .replace(/\u00a0/g, " ")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const startsRow = (s: string) =>
+    /^(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\d{4}-\d{2}-\d{2})\b/.test(s);
+  const out: string[] = [];
+  let buf: string[] = [];
+  const flush = () => {
+    if (!buf.length) return;
+    out.push(buf.join(" "));
+    buf = [];
   };
-
-  const parser = new PDFParse({ data: buffer });
-  try {
-    const result = await parser.getText();
-    let text = (result.text || "").trim();
-
-    if (text.replace(/\s/g, "").length < 40) {
-      try {
-        const shots = await parser.getScreenshot({
-          partial: [1, 2],
-          imageBuffer: true,
-          scale: 2,
-        });
-        const ocrParts: string[] = [];
-        for (const page of shots.pages || []) {
-          if (!page.data) continue;
-          const pageText = await extractTextFromImage(Buffer.from(page.data));
-          if (pageText) ocrParts.push(pageText);
-        }
-        if (ocrParts.length) text = ocrParts.join("\n");
-      } catch {
-        /* keep */
-      }
+  for (const line of lines) {
+    if (startsRow(line)) {
+      flush();
+      buf = [line];
+      continue;
     }
-    return text.trim();
-  } finally {
-    await parser.destroy().catch(() => undefined);
+    if (!buf.length) {
+      out.push(line);
+      continue;
+    }
+    buf.push(line);
   }
+  flush();
+  return out.join("\n");
 }
 
 export async function extractTextFromImage(buffer: Buffer): Promise<string> {
@@ -629,7 +624,7 @@ export function parseCsvTransactions(text: string): DraftRow[] {
 }
 
 export function parseUnstructuredText(text: string): DraftRow[] {
-  const cleaned = text.replace(/\u00a0/g, " ").trim();
+  const cleaned = stitchStatementLines(text.replace(/\u00a0/g, " ").trim());
   if (!cleaned) return [];
 
   const isBankStatement =
